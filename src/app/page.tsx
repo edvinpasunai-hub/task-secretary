@@ -1,23 +1,41 @@
-import { BriefcaseBusiness } from "lucide-react";
+import { Suspense } from "react";
 
-import { Button } from "@/components/ui/button";
+import { LogoutButton } from "@/components/logout-button";
+import { SecretaryAvatar } from "@/components/secretary-avatar";
+import { prisma } from "@/lib/db";
+import { requireUser } from "@/lib/session";
 
-// Temporary Stage 1 placeholder. Replaced by the login and dashboard pages in later stages.
+// Temporary Stage 3 home page. Replaced by the briefing and dashboard in later stages.
 export default function Home() {
   return (
     <main className="flex flex-1 items-center justify-center p-4">
       <div className="w-full max-w-md rounded-2xl border bg-card p-8 text-center shadow-sm">
-        <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <BriefcaseBusiness className="size-7" aria-hidden />
-        </div>
+        <SecretaryAvatar className="mx-auto mb-4" />
         <h1 className="text-2xl font-semibold tracking-tight">Task Secretary</h1>
-        <p className="mt-2 text-muted-foreground">
-          Good day, Boss! Your personal secretary is getting ready.
-        </p>
-        <Button className="mt-6" size="lg" disabled>
-          Coming soon
-        </Button>
+        <Suspense fallback={<p className="mt-2 text-muted-foreground">Checking your login…</p>}>
+          <Welcome />
+        </Suspense>
       </div>
     </main>
+  );
+}
+
+async function Welcome() {
+  const user = await requireUser();
+  // Every task query is limited to the logged-in user's own tasks.
+  const taskCount = await prisma.task.count({ where: { userId: user.id } });
+
+  return (
+    <>
+      <p className="mt-2 text-muted-foreground">
+        Hello, Boss! You are logged in as <span className="font-medium text-foreground">{user.email}</span>.
+      </p>
+      <p className="mt-1 text-sm text-muted-foreground" data-testid="task-count">
+        You have {taskCount} {taskCount === 1 ? "task" : "tasks"}.
+      </p>
+      <div className="mt-6">
+        <LogoutButton />
+      </div>
+    </>
   );
 }
