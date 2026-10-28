@@ -1,0 +1,149 @@
+// Task Secretary database schema.
+// After changing this file, run `npm run db:migrate` to create a migration.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Authentication tables (structure required by Better Auth)
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+
+  sessions  Session[]
+  accounts  Account[]
+  tasks     Task[]
+  reminders Reminder[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// Stores how a user signs in. For email + password login, the
+// securely hashed password is kept in `password` (never the plain text).
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+// ---------------------------------------------------------------------------
+// Task Secretary tables
+// ---------------------------------------------------------------------------
+
+// Declared from most to least important: PostgreSQL sorts enum values in
+// declaration order, so sorting by priority ascending puts HIGH first.
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+// "Overdue" is not a status; it is calculated from dueDate and today's date.
+enum TaskStatus {
+  TODO
+  DONE
+}
+
+model Task {
+  id              String     @id @default(cuid())
+  userId          String
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String     @db.VarChar(200)
+  description     String?
+  priority        Priority   @default(MEDIUM)
+  status          TaskStatus @default(TODO)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  // Deadlines are calendar dates without a time of day.
+  originalDueDate DateTime?  @db.Date
+  dueDate         DateTime?  @db.Date
+  completedAt     DateTime?
+  rescheduleCount Int        @default(0)
+
+  reminders Reminder[]
+
+  @@index([userId, status, dueDate])
+  @@map("tasks")
+}
+
+enum ReminderType {
+  DAY_BEFORE
+  DUE_DAY
+}
+
+// One row per reminder event. The unique rule on (taskId, type, forDueDate)
+// guarantees the same reminder can never be created twice.
+model Reminder {
+  id           String       @id @default(cuid())
+  taskId       String
+  task         Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         ReminderType
+  // The deadline this reminder belongs to. A new deadline means new reminders.
+  forDueDate   DateTime     @db.Date
+  // When the reminder should first appear (09:00 Europe/Tallinn).
+  scheduledAt  DateTime
+  // Set by "Remind Later": the reminder stays hidden until this moment.
+  snoozedUntil DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([taskId, type, forDueDate])
+  @@index([userId])
+  @@map("reminders")
+}
