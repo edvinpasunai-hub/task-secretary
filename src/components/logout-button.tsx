@@ -6,7 +6,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
 
-export function LogoutButton() {
+// `compact` shows only the icon on small screens (used in the app header).
+export function LogoutButton({ compact = false }: { compact?: boolean }) {
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -30,14 +31,19 @@ export function LogoutButton() {
     setPending(false);
   }
 
+  const label = pending ? "Logging out…" : "Log out";
+
   return (
-    <div className="flex flex-col items-center gap-2">
-      <Button variant="outline" onClick={handleLogout} disabled={pending}>
+    <div className="relative flex flex-col items-center gap-2">
+      <Button variant="outline" size="lg" onClick={handleLogout} disabled={pending} aria-label={compact ? label : undefined}>
         <LogOut aria-hidden />
-        {pending ? "Logging out…" : "Log out"}
+        <span className={compact ? "sr-only sm:not-sr-only" : undefined}>{label}</span>
       </Button>
       {failed && (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          role="alert"
+          className={compact ? "absolute top-full right-0 mt-1 w-56 rounded-lg border bg-card p-2 text-sm text-destructive shadow-sm" : "text-sm text-destructive"}
+        >
           Could not log out. Please check your connection and try again.
         </p>
       )}

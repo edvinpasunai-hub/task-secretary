@@ -22,6 +22,8 @@ model User {
   image         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @default(now()) @updatedAt
+  // IANA time zone used to interpret the user's task dates and times.
+  timeZone      String   @default("Europe/Tallinn")
 
   sessions  Session[]
   accounts  Account[]
@@ -85,38 +87,51 @@ model Verification {
 // ---------------------------------------------------------------------------
 
 // Declared from most to least important: PostgreSQL sorts enum values in
-// declaration order, so sorting by priority ascending puts HIGH first.
-enum Priority {
+// declaration order, so sorting by importance ascending puts HIGH first.
+enum Importance {
   HIGH
-  MEDIUM
+  NORMAL
   LOW
 }
 
-// "Overdue" is not a status; it is calculated from dueDate and today's date.
+// "Overdue" is not a status; it is calculated from the deadline and the
+// current time in the user's time zone.
 enum TaskStatus {
   TODO
-  DONE
+  IN_PROGRESS
+  POSTPONED
+  COMPLETED
 }
 
+// Planned and deadline values are stored as the user's local calendar date
+// and optional wall-clock time (no time = the whole day). They are read in the
+// owner's users.timeZone, so they never shift if that time zone changes.
 model Task {
-  id              String     @id @default(cuid())
-  userId          String
-  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title           String     @db.VarChar(200)
-  description     String?
-  priority        Priority   @default(MEDIUM)
-  status          TaskStatus @default(TODO)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  // Deadlines are calendar dates without a time of day.
-  originalDueDate DateTime?  @db.Date
-  dueDate         DateTime?  @db.Date
-  completedAt     DateTime?
-  rescheduleCount Int        @default(0)
+  id                   String     @id @default(cuid())
+  userId               String
+  user                 User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title                String     @db.VarChar(200)
+  description          String?
+  importance           Importance @default(NORMAL)
+  status               TaskStatus @default(TODO)
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  // When the user intends to work on the task.
+  plannedDate          DateTime?  @db.Date
+  plannedTime          DateTime?  @db.Time(0)
+  // When the task must be finished.
+  deadlineDate         DateTime?  @db.Date
+  deadlineTime         DateTime?  @db.Time(0)
+  // First deadline date ever assigned; never changes afterwards.
+  originalDeadlineDate DateTime?  @db.Date
+  // How many times an existing deadline date was changed or removed.
+  rescheduleCount      Int        @default(0)
+  estimatedMinutes     Int?
+  completedAt          DateTime?
 
   reminders Reminder[]
 
-  @@index([userId, status, dueDate])
+  @@index([userId, status, deadlineDate])
   @@map("tasks")
 }
 
