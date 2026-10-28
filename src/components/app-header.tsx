@@ -1,6 +1,7 @@
 import { Plus } from "lucide-react";
 import Link from "next/link";
 
+import { AppNav } from "@/components/app-nav";
 import { LogoutButton } from "@/components/logout-button";
 import { SecretaryAvatar } from "@/components/secretary-avatar";
 import { buttonVariants } from "@/components/ui/button";
@@ -22,6 +23,7 @@ export function AppHeader({ user }: { user: CurrentUser }) {
         </Link>
         <LogoutButton compact />
       </div>
+      <AppNav />
     </header>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, LoaderCircle } from "lucide-react";
+import { AlertTriangle, LoaderCircle, Plus } from "lucide-react";
 import Link from "next/link";
 import {
   startTransition,
@@ -13,8 +13,12 @@ import {
   type Ref,
 } from "react";
 
+import { createCategory } from "@/app/categories/actions";
 import type { TaskFormState } from "@/app/tasks/actions";
+import { CategoryChip } from "@/components/category-chip";
+import { CategoryDialog } from "@/components/category-dialog";
 import type { TaskStatus } from "@/generated/prisma/enums";
+import { suggestCategoryColor, type TaskCategory } from "@/lib/category-rules";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +32,11 @@ type TaskFormProps = {
   action: (state: TaskFormState, formData: FormData) => Promise<TaskFormState>;
   task?: TaskView;
   submitLabel: string;
+  // The logged-in user's own categories, for the category field.
+  categories: TaskCategory[];
+  // The category filter the task was opened from: Cancel returns to it, and
+  // the server returns to it after saving (after checking it is the user's).
+  returnCategoryId?: string;
 };
 
 // Lets the status buttons on the task page work together with the edit form.
@@ -63,7 +72,7 @@ function durationParts(minutes: number | null | undefined) {
   return { hours: String(Math.floor(minutes / 60)), minutes: String(minutes % 60) };
 }
 
-function TaskFormFields({ action, task, submitLabel, ref }: TaskFormProps & { ref: Ref<FieldsHandle> }) {
+function TaskFormFields({ action, task, submitLabel, categories, returnCategoryId, ref }: TaskFormProps & { ref: Ref<FieldsHandle> }) {
   const [state, formAction, pending] = useActionState(action, {});
   const formRef = useRef<HTMLFormElement>(null);
   const savedValues = useRef<string | null>(null);
@@ -107,6 +116,20 @@ function TaskFormFields({ action, task, submitLabel, ref }: TaskFormProps & { re
     deadlineTime: timing.deadlineTime || null,
   });
 
+  // Categories created from this form with "New category" are saved in the
+  // database at once, and offered here even before the page data refreshes.
+  const [created, setCreated] = useState<TaskCategory[]>([]);
+  const options = [...categories, ...created.filter((c) => !categories.some((known) => known.id === c.id))].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+  );
+  // An id that is not one of the user's categories (for example after an
+  // error) is shown as "No category" instead of being kept.
+  const requestedCategory = value("categoryId", task?.category?.id);
+  const [categoryId, setCategoryId] = useState(options.some((c) => c.id === requestedCategory) ? requestedCategory : "");
+  const [quickOpen, setQuickOpen] = useState(false);
+  const categorySelect = useRef<HTMLSelectElement>(null);
+  const selectedCategory = options.find((c) => c.id === categoryId);
+
   // Submit without React's automatic form reset, so typed values stay visible
   // when the server reports a validation error.
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -127,6 +150,7 @@ function TaskFormFields({ action, task, submitLabel, ref }: TaskFormProps & { re
   return (
     <form ref={formRef} onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
       {task && <input type="hidden" name="id" value={task.id} />}
+      {returnCategoryId && <input type="hidden" name="returnCategory" value={returnCategoryId} />}
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="title">Title</Label>
@@ -156,6 +180,56 @@ function TaskFormFields({ action, task, submitLabel, ref }: TaskFormProps & { re
         />
         {error("description")}
       </div>
+
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="categoryId">
+          Category <span className="font-normal text-muted-foreground">(optional)</span>
+        </Label>
+        <div className="flex gap-2">
+          <select
+            ref={categorySelect}
+            id="categoryId"
+            name="categoryId"
+            value={categoryId}
+            onChange={(event) => setCategoryId(event.target.value)}
+            className="h-10 min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30"
+            {...invalid("categoryId")}
+          >
+            <option value="">No category</option>
+            {options.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+          <Button type="button" variant="outline" size="lg" className="h-10 shrink-0" onClick={() => setQuickOpen(true)}>
+            <Plus aria-hidden />
+            New category
+          </Button>
+        </div>
+        {selectedCategory && (
+          <div>
+            <CategoryChip category={selectedCategory} />
+          </div>
+        )}
+        {error("categoryId")}
+      </div>
+
+      <CategoryDialog
+        open={quickOpen}
+        onOpenChange={setQuickOpen}
+        title="New category"
+        description="It is saved right away and selected for this task. The task itself is only saved when you save the form."
+        submitLabel="Create category"
+        initialName=""
+        initialColor={suggestCategoryColor(options.map((c) => c.color))}
+        save={({ name, color }) => createCategory({ name, color })}
+        onSaved={(category) => {
+          setCreated((current) => [...current, category]);
+          setCategoryId(category.id);
+          requestAnimationFrame(() => categorySelect.current?.focus());
+        }}
+      />
 
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-2 text-sm font-medium">Importance</legend>
@@ -256,7 +330,7 @@ function TaskFormFields({ action, task, submitLabel, ref }: TaskFormProps & { re
       )}
 
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Link href="/" className={buttonVariants({ variant: "outline", size: "lg", className: "h-10" })}>
+        <Link href={returnCategoryId ? `/?category=${returnCategoryId}` : "/"} className={buttonVariants({ variant: "outline", size: "lg", className: "h-10" })}>
           Cancel
         </Link>
         <Button type="submit" size="lg" className="h-10" disabled={pending}>

@@ -1,11 +1,13 @@
 import { z } from "zod";
 
+import { categoryIdSchema } from "@/lib/category-validation";
 import { isValidLocalDate, isValidLocalTime } from "@/lib/local-time";
 import { IMPORTANCE_LEVELS, MAX_ESTIMATED_MINUTES, TASK_STATUSES } from "@/lib/task-rules";
 
 export const TASK_FORM_FIELDS = [
   "title",
   "description",
+  "categoryId",
   "importance",
   "plannedDate",
   "plannedTime",
@@ -41,6 +43,9 @@ const taskFormSchema = z
       .trim()
       .max(5000, "The description can be at most 5000 characters.")
       .transform((value) => value || null),
+    // Empty means "no category". Whether the category belongs to the user is
+    // checked against the database by the server action.
+    categoryId: optional((value) => categoryIdSchema.safeParse(value).success, "Please choose one of your categories."),
     importance: z.enum(IMPORTANCE_LEVELS, { error: "Please choose High, Normal or Low." }),
     plannedDate: optional(isValidLocalDate, "Please enter a valid planned date."),
     plannedTime: optional(isValidLocalTime, "Please enter a valid time, for example 14:30."),
@@ -69,7 +74,7 @@ const taskFormSchema = z
 export type TaskInput = z.output<typeof taskFormSchema>;
 
 export type TaskFormResult =
-  | { success: true; data: TaskInput }
+  | { success: true; data: TaskInput; values: TaskFormValues }
   | { success: false; errors: Partial<Record<TaskFormField, string>>; values: TaskFormValues };
 
 // Reads and validates the task form on the server. Unknown fields (such as a
@@ -83,7 +88,7 @@ export function parseTaskForm(formData: FormData): TaskFormResult {
   ) as TaskFormValues;
 
   const result = taskFormSchema.safeParse(values);
-  if (result.success) return { success: true, data: result.data };
+  if (result.success) return { success: true, data: result.data, values };
 
   const errors: Partial<Record<TaskFormField, string>> = {};
   for (const issue of result.error.issues) {

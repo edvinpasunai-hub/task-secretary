@@ -1,6 +1,7 @@
 import { Check, RotateCcw } from "lucide-react";
 import Link from "next/link";
 
+import { CategoryChip } from "@/components/category-chip";
 import { SubmitButton } from "@/components/submit-button";
 import { ImportanceBadge, StatusBadge, TimingBadges } from "@/components/task-badges";
 import { setTaskStatus } from "@/app/tasks/actions";
@@ -9,7 +10,9 @@ import { formatDuration } from "@/lib/task-rules";
 import type { TaskView } from "@/lib/tasks";
 import { cn } from "@/lib/utils";
 
-export function TaskCard({ task, now, timeZone }: { task: TaskView; now: LocalNow; timeZone: string }) {
+// categoryFilterId: the category the list is filtered by, if any, so that
+// opening the task and coming back keeps the filter.
+export function TaskCard({ task, now, timeZone, categoryFilterId }: { task: TaskView; now: LocalNow; timeZone: string; categoryFilterId?: string }) {
   const completed = task.status === "COMPLETED";
 
   return (
@@ -36,7 +39,7 @@ export function TaskCard({ task, now, timeZone }: { task: TaskView; now: LocalNo
 
       <div className="min-w-0 flex-1">
         <Link
-          href={`/tasks/${task.id}`}
+          href={categoryFilterId ? `/tasks/${task.id}?category=${categoryFilterId}` : `/tasks/${task.id}`}
           className={cn("font-medium break-words hover:underline", completed && "text-muted-foreground line-through")}
         >
           {task.title}
@@ -46,6 +49,7 @@ export function TaskCard({ task, now, timeZone }: { task: TaskView; now: LocalNo
           <StatusBadge status={task.status} />
           <ImportanceBadge importance={task.importance} />
           <TimingBadges task={task} now={now} />
+          {task.category && <CategoryChip category={task.category} />}
         </div>
 
         <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">

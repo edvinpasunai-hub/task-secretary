@@ -3,6 +3,7 @@
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { categoryIdSchema } from "@/lib/category-validation";
 import { prisma } from "@/lib/db";
 import { dateFromDb, dateToDb, timeToDb } from "@/lib/local-time";
 import { requireUser } from "@/lib/session";
@@ -28,6 +29,7 @@ export type TaskFormState = {
 
 function taskColumns(input: TaskInput) {
   return {
+    categoryId: input.categoryId,
     title: input.title,
     description: input.description,
     importance: input.importance,
@@ -40,6 +42,28 @@ function taskColumns(input: TaskInput) {
 }
 
 const SAVE_FAILED = "Sorry, the task could not be saved. Please try again.";
+const CATEGORY_INVALID = "Please choose one of your categories.";
+
+// A category id sent by the browser is only accepted if the category belongs to
+// the logged-in user. Someone else's category and an unknown id look exactly
+// the same: both are simply "not one of your categories".
+async function ownsCategory(userId: string, categoryId: string | null) {
+  if (categoryId === null) return true;
+  return (await prisma.category.count({ where: { id: categoryId, userId } })) === 1;
+}
+
+// Where to go after saving an edit. The browser only sends a category id; the
+// path is built here, and only if that id is one of the user's own categories.
+// Anything else (an URL, a deleted or someone else's category) goes to the plain list.
+async function returnPath(userId: string, raw: FormDataEntryValue | null) {
+  const id = categoryIdSchema.safeParse(raw);
+  if (!id.success || !(await ownsCategory(userId, id.data))) return "/";
+  return `/?category=${id.data}`;
+}
+
+// The category was deleted between the check and the save.
+const isMissingCategory = (error: unknown) =>
+  typeof error === "object" && error !== null && "code" in error && error.code === "P2003";
 
 export async function createTask(_state: TaskFormState, formData: FormData): Promise<TaskFormState> {
   const user = await requireUser();
@@ -47,6 +71,9 @@ export async function createTask(_state: TaskFormState, formData: FormData): Pro
   if (!parsed.success) return { errors: parsed.errors, values: parsed.values };
 
   try {
+    if (!(await ownsCategory(user.id, parsed.data.categoryId))) {
+      return { errors: { categoryId: CATEGORY_INVALID }, values: parsed.values };
+    }
     await prisma.task.create({
       data: {
         ...taskColumns(parsed.data),
@@ -54,7 +81,8 @@ export async function createTask(_state: TaskFormState, formData: FormData): Pro
         originalDeadlineDate: dateToDb(parsed.data.deadlineDate),
       },
     });
-  } catch {
+  } catch (error) {
+    if (isMissingCategory(error)) return { errors: { categoryId: CATEGORY_INVALID }, values: parsed.values };
     return { message: SAVE_FAILED };
   }
   redirect("/");
@@ -74,19 +102,16 @@ export async function updateTask(_state: TaskFormState, formData: FormData): Pro
   if (status && !status.success) return { message: "Please choose a valid status." };
 
   const parsed = parseTaskForm(formData);
-  if (!parsed.success) {
-    return {
-      errors: parsed.errors,
-      values: parsed.values,
-      message: status
-        ? "Your changes were not saved and the status was not changed. Please fix the highlighted fields."
-        : undefined,
-    };
-  }
+  // With "Save changes and switch status", say clearly that neither part was saved.
+  const notSaved = status ? "Your changes were not saved and the status was not changed. Please fix the highlighted fields." : undefined;
+  if (!parsed.success) return { errors: parsed.errors, values: parsed.values, message: notSaved };
 
   try {
     const current = await prisma.task.findFirst({ where: { id: id.data, userId: user.id } });
     if (!current) return { message: "This task was not found." };
+    if (!(await ownsCategory(user.id, parsed.data.categoryId))) {
+      return { errors: { categoryId: CATEGORY_INVALID }, values: parsed.values, message: notSaved };
+    }
 
     const deadline = applyDeadlineChange(
       {
@@ -105,14 +130,15 @@ export async function updateTask(_state: TaskFormState, formData: FormData): Pro
         ...(status && { status: status.data, completedAt: completedAtFor(current, status.data, new Date()) }),
       },
     });
-  } catch {
+  } catch (error) {
+    if (isMissingCategory(error)) return { errors: { categoryId: CATEGORY_INVALID }, values: parsed.values, message: notSaved };
     return { message: SAVE_FAILED };
   }
   if (status) {
     refresh();
     return {};
   }
-  redirect("/");
+  redirect(await returnPath(user.id, formData.get("returnCategory")));
 }
 
 export async function setTaskStatus(formData: FormData): Promise<void> {

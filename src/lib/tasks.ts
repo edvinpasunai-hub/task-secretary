@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { Task } from "@/generated/prisma/client";
+import type { TaskCategory } from "@/lib/category-rules";
 import { prisma } from "@/lib/db";
 import { dateFromDb, timeFromDb } from "@/lib/local-time";
 import { requireUser } from "@/lib/session";
@@ -23,9 +24,16 @@ export type TaskView = {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  // Only ever one of the owner's own categories.
+  category: TaskCategory | null;
 };
 
-export function toTaskView(task: Task): TaskView {
+// The task row together with its category, as loaded by the queries below.
+type TaskWithCategory = Task & { category: TaskCategory | null };
+
+const withCategory = { category: { select: { id: true, name: true, color: true } } } as const;
+
+export function toTaskView(task: TaskWithCategory): TaskView {
   return {
     id: task.id,
     title: task.title,
@@ -42,6 +50,7 @@ export function toTaskView(task: Task): TaskView {
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
     completedAt: task.completedAt?.toISOString() ?? null,
+    category: task.category,
   };
 }
 
@@ -49,10 +58,13 @@ export function toTaskView(task: Task): TaskView {
 // another user's tasks.
 
 // Most important first, then the earliest deadline (tasks without one last).
-export async function getMyTasks(): Promise<TaskView[]> {
+// With a category id, only that category's tasks (of every status). The
+// owner filter always applies too, so another user's id can never match.
+export async function getMyTasks(categoryId?: string): Promise<TaskView[]> {
   const user = await requireUser();
   const tasks = await prisma.task.findMany({
-    where: { userId: user.id },
+    where: { userId: user.id, ...(categoryId && { categoryId }) },
+    include: withCategory,
     orderBy: [
       { importance: "asc" },
       { deadlineDate: { sort: "asc", nulls: "last" } },
@@ -68,6 +80,6 @@ export async function getMyTasks(): Promise<TaskView[]> {
 export async function getMyTask(id: string): Promise<TaskView | null> {
   const user = await requireUser();
   if (!taskIdSchema.safeParse(id).success) return null;
-  const task = await prisma.task.findFirst({ where: { id, userId: user.id } });
+  const task = await prisma.task.findFirst({ where: { id, userId: user.id }, include: withCategory });
   return task ? toTaskView(task) : null;
 }

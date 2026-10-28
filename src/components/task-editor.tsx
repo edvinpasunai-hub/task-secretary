@@ -19,12 +19,13 @@ import { Button } from "@/components/ui/button";
 import type { TaskStatus } from "@/generated/prisma/enums";
 import { STATUS_LABELS, TASK_STATUSES } from "@/lib/task-rules";
 import type { TaskView } from "@/lib/tasks";
+import type { TaskCategory } from "@/lib/category-rules";
 import { cn } from "@/lib/utils";
 
 // The task page's status buttons and edit form. Switching status is immediate,
 // unless the form has unsaved changes: then the user chooses to save them,
 // discard them, or keep editing.
-export function TaskEditor({ task, details }: { task: TaskView; details: ReactNode }) {
+export function TaskEditor({ task, details, categories, returnCategoryId }: { task: TaskView; details: ReactNode; categories: TaskCategory[]; returnCategoryId?: string }) {
   const form = useRef<TaskFormHandle>(null);
   const [pending, startTransition] = useTransition();
   const [requestedStatus, setRequestedStatus] = useState<TaskStatus | null>(null);
@@ -96,7 +97,7 @@ export function TaskEditor({ task, details }: { task: TaskView; details: ReactNo
           Edit task
         </h2>
         <div className="rounded-xl border bg-card p-4 shadow-xs sm:p-6">
-          <TaskForm ref={form} action={updateTask} task={task} submitLabel="Save changes" />
+          <TaskForm ref={form} action={updateTask} task={task} submitLabel="Save changes" categories={categories} returnCategoryId={returnCategoryId} />
         </div>
       </section>
 

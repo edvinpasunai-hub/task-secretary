@@ -25,10 +25,11 @@ model User {
   // IANA time zone used to interpret the user's task dates and times.
   timeZone      String   @default("Europe/Tallinn")
 
-  sessions  Session[]
-  accounts  Account[]
-  tasks     Task[]
-  reminders Reminder[]
+  sessions   Session[]
+  accounts   Account[]
+  tasks      Task[]
+  categories Category[]
+  reminders  Reminder[]
 
   @@map("users")
 }
@@ -128,11 +129,47 @@ model Task {
   rescheduleCount      Int        @default(0)
   estimatedMinutes     Int?
   completedAt          DateTime?
+  // Optional; must be one of the owner's categories (checked by the server).
+  // Deleting the category keeps the task and clears this field.
+  categoryId           String?
+  category             Category?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   reminders Reminder[]
 
   @@index([userId, status, deadlineDate])
+  @@index([categoryId])
   @@map("tasks")
+}
+
+// The fixed palette users choose category colours from.
+enum CategoryColor {
+  RED
+  AMBER
+  LIME
+  TEAL
+  SKY
+  INDIGO
+  PURPLE
+  PINK
+}
+
+model Category {
+  id             String        @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // As typed by the user (trimmed).
+  name           String        @db.VarChar(50)
+  // Lower-case copy of the name, so "TMJK" and "tmjk" count as the same name.
+  normalizedName String
+  color          CategoryColor
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  tasks Task[]
+
+  // Category names are unique per user, ignoring upper/lower case.
+  @@unique([userId, normalizedName])
+  @@map("categories")
 }
 
 enum ReminderType {
