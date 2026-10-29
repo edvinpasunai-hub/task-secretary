@@ -4,6 +4,7 @@ import type { ReminderType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
 import { dateFromDb, dateToDb, formatLocalDate, nowInTimeZone, timeFromDb } from "@/lib/local-time";
 import { addDays } from "@/lib/recurrence/civil-date";
+import { ACTIVE_TASK } from "@/lib/task-state";
 import { dueSlots, KEEP_MS, REMINDER_TIME_ZONE, relevantDeadlineDates, SNOOZE_MS } from "@/lib/reminders/rules";
 
 // In-app reminders. Every function takes the user's id from the caller (the session,
@@ -17,6 +18,9 @@ import { dueSlots, KEEP_MS, REMINDER_TIME_ZONE, relevantDeadlineDates, SNOOZE_MS
 // Duplicates: the database refuses a second (task, type, deadline date) reminder, and
 // the insert is ON CONFLICT DO NOTHING, so repeated page loads and simultaneous requests
 // create each reminder exactly once.
+//
+// Trashed and archived tasks neither get nor show reminders (their rows are kept, so read and
+// snooze state survive a restore; see src/lib/trash/service.ts for what a restore removes).
 //
 // Staleness: a reminder is only shown while its task is unfinished AND still has the
 // deadline date the reminder was made for. Changing a deadline therefore hides the old
@@ -46,7 +50,7 @@ export async function reconcileReminders(ctx: ReminderContext): Promise<number> 
   const now = nowOf(ctx);
   const [today, tomorrow] = relevantDeadlineDates(now);
   const tasks = await prisma.task.findMany({
-    where: { userId: ctx.userId, status: { not: "COMPLETED" }, deadlineDate: { in: [dateToDb(today)!, dateToDb(tomorrow)!] } },
+    where: { userId: ctx.userId, ...ACTIVE_TASK, status: { not: "COMPLETED" }, deadlineDate: { in: [dateToDb(today)!, dateToDb(tomorrow)!] } },
     select: { id: true, deadlineDate: true },
   });
 
@@ -74,7 +78,7 @@ export async function listReminders(ctx: ReminderContext): Promise<RemindersView
     where: {
       userId: ctx.userId,
       scheduledAt: { lte: now, gte: new Date(now.getTime() - KEEP_MS) },
-      task: { status: { not: "COMPLETED" } },
+      task: { ...ACTIVE_TASK, status: { not: "COMPLETED" } },
     },
     include: { task: { select: { title: true, deadlineDate: true, deadlineTime: true } } },
     orderBy: [{ scheduledAt: "desc" }, { id: "asc" }],
@@ -117,6 +121,7 @@ export async function getReminders(ctx: ReminderContext): Promise<RemindersView>
 // owner's: the owner filter is part of every write.
 const changeable = (ctx: ReminderContext, now: Date) => ({
   userId: ctx.userId,
+  task: { ...ACTIVE_TASK, status: { not: "COMPLETED" as const } },
   scheduledAt: { lte: now },
   OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
 });

@@ -5,11 +5,12 @@ import { prisma } from "@/lib/db";
 import type { CategoryView, TaskCategory } from "@/lib/category-rules";
 import { categoryIdSchema } from "@/lib/category-validation";
 import { requireUser } from "@/lib/session";
+import { ACTIVE_TASK } from "@/lib/task-state";
 
 export const categoryWithTaskCount = (userId: string) =>
   ({
-    // Count only the owner's tasks.
-    _count: { select: { tasks: { where: { userId } } } },
+    // Count only the owner's active tasks (not archived, not in Trash).
+    _count: { select: { tasks: { where: { userId, ...ACTIVE_TASK } } } },
   }) as const;
 
 export function toCategoryView(category: Category & { _count: { tasks: number } }): CategoryView {

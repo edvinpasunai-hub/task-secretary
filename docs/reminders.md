@@ -57,6 +57,11 @@ Server Actions resolve the user from the session and accept only a reminder id; 
 Each instance is a separate task with its own deadline, so it has its own reminders. A finished instance's reminders
 are hidden; the successor gets its own when its dates arrive. Stopping a series does not touch existing reminders.
 
+## Trash and archive (Stage 4.5)
+
+Trashed and archived tasks neither get nor show reminders; a restore deletes reminders whose deadline has passed and keeps
+the others with their read/snooze state. See `docs/trash-archive.md`.
+
 ## Migration
 
 `20261029160000_reminders`: adds `readAt`, the unique key `tasks(id, userId)`, the composite foreign key and the
@@ -64,5 +69,5 @@ index `reminders(userId, scheduledAt)`.
 
 ## Not in this stage
 
-Overdue-task handling (Dashboard), task deletion/trash (4.5: soft-deleted tasks must also hide their reminders),
+Overdue-task handling (Dashboard),
 per-user reminder times or time zones, other channels.

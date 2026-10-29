@@ -65,9 +65,7 @@ Series edits are version-checked (typed `CONFLICT` result with `currentVersion`)
 
 - **Calendar/forecast view** of future occurrences.
 
-- **Stage 4.5 (trash/archive)**: deleting one instance or a whole series. `stopSeries` is the
-  non-destructive building block. Soft-deleted instances must keep reserving their occurrence key, and
-  deleting the tail instance must advance or end the series (decision needed then).
+- **Trash/archive** is done in Stage 4.5: see `docs/trash-archive.md` (skipping an occurrence, stopping a series, tombstones).
 - Per-user recurrence time zone (the engine already takes a time-zone parameter).
 - Re-dating other unfinished instances when the schedule changes (currently only the edited one moves).
 - Reminders for recurring tasks.

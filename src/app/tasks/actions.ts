@@ -19,6 +19,7 @@ import {
 import type { RecurrenceError, Result } from "@/lib/recurrence/types";
 import { requireUser } from "@/lib/session";
 import { applyDeadlineChange, completedAtFor } from "@/lib/task-rules";
+import { ACTIVE_TASK } from "@/lib/task-state";
 import {
   parseTaskForm,
   taskIdSchema,
@@ -155,7 +156,7 @@ export async function updateTask(_state: TaskFormState, formData: FormData): Pro
   const notSaved = status ? "Your changes were not saved and the status was not changed. Please fix the highlighted fields." : undefined;
 
   try {
-    const current = await prisma.task.findFirst({ where: { id: id.data, userId: user.id } });
+    const current = await prisma.task.findFirst({ where: { id: id.data, userId: user.id, ...ACTIVE_TASK } });
     if (!current) return { message: "This task was not found." };
 
     const isSeries = current.seriesId !== null;
@@ -257,7 +258,7 @@ export async function setTaskStatus(formData: FormData): Promise<void> {
   if (!id.success || !status.success) return;
 
   const current = await prisma.task.findFirst({
-    where: { id: id.data, userId: user.id },
+    where: { id: id.data, userId: user.id, ...ACTIVE_TASK },
     select: { id: true, status: true, completedAt: true, seriesId: true },
   });
   if (!current) return;

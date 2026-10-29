@@ -148,12 +148,21 @@ model Task {
   predecessor   Task?            @relation("TaskSuccession", fields: [predecessorId], references: [id], onDelete: SetNull)
   successor     Task?            @relation("TaskSuccession")
 
+  // Trash and archive. Active = both empty. deletedAt: in Trash (recoverable for 30 days).
+  // archivedAt: archived (finished tasks only; the database checks it). purgedAt: a tombstone, the
+  // scrubbed remains of a permanently deleted occurrence of a series (it only keeps the occurrence
+  // key so the date is never generated again; it is never listed, restored or shown).
+  deletedAt  DateTime?
+  archivedAt DateTime?
+  purgedAt   DateTime?
+
   reminders Reminder[]
 
   // The same occurrence of a series can never exist twice.
   @@unique([seriesId, occurrenceKey])
   // Lets reminders point at "this task of this user" (the database enforces same user).
   @@unique([id, userId])
+  @@index([userId, deletedAt, archivedAt])
   @@index([userId, status, deadlineDate])
   @@index([categoryId])
   @@map("tasks")

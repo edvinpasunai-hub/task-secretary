@@ -13,7 +13,9 @@ export type RecurrenceErrorCode =
   | "SERIES_STOPPED" // recurrence was turned off; nothing can restart it
   | "ALREADY_RECURRING"
   | "NOT_RECURRING"
-  | "RECONCILE_FAILED"; // an expired pause could not be reconciled, so the operation was not done
+  | "RECONCILE_FAILED" // an expired pause could not be reconciled, so the operation was not done
+  | "EXPIRED" // the task was in Trash for 30 days or more and can no longer be restored
+  | "NOT_COMPLETED"; // only finished tasks can be archived
 
 export type RecurrenceError = {
   code: RecurrenceErrorCode;

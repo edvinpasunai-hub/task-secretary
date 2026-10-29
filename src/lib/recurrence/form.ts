@@ -103,6 +103,8 @@ export function recurrenceMessage(error: RecurrenceError): string {
     case "INVALID_STATE":
       return error.message;
     case "VALIDATION":
+    case "EXPIRED":
+    case "NOT_COMPLETED":
       return error.message;
   }
 }

@@ -71,6 +71,7 @@ import {
 } from "@/lib/recurrence/validation";
 import { dateFromDb, dateToDb, nowInTimeZone, timeFromDb, timeToDb, type LocalDate, type LocalNow, type LocalTime } from "@/lib/local-time";
 import { applyDeadlineChange } from "@/lib/task-rules";
+import { ACTIVE_TASK } from "@/lib/task-state";
 
 type Tx = Prisma.TransactionClient;
 
@@ -90,7 +91,7 @@ export async function runInTransaction<T>(fn: (tx: Tx) => Promise<T>): Promise<R
   return runTx(fn);
 }
 
-async function runTx<T>(fn: (tx: Tx) => Promise<T>): Promise<Result<T>> {
+export async function runTx<T>(fn: (tx: Tx) => Promise<T>): Promise<Result<T>> {
   for (let attempt = 1; ; attempt++) {
     try {
       return ok(await prisma.$transaction(fn, TX_OPTIONS));
@@ -103,12 +104,12 @@ async function runTx<T>(fn: (tx: Tx) => Promise<T>): Promise<Result<T>> {
   }
 }
 
-const abort = (code: RecurrenceErrorCode, message: string, extra: Parameters<typeof fail>[2] = {}): never => {
+export const abort = (code: RecurrenceErrorCode, message: string, extra: Parameters<typeof fail>[2] = {}): never => {
   throw new AbortWith(fail(code, message, extra));
 };
 
-const clock = (ctx: ServiceContext) => ctx.now ?? new Date();
-const localNowOf = (ctx: ServiceContext): LocalNow => nowInTimeZone(RECURRENCE_TIME_ZONE, clock(ctx));
+export const clock = (ctx: ServiceContext) => ctx.now ?? new Date();
+export const localNowOf = (ctx: ServiceContext): LocalNow => nowInTimeZone(RECURRENCE_TIME_ZONE, clock(ctx));
 const firstMessage = (error: { issues: Array<{ message: string }> }) => error.issues[0]?.message ?? "Please check the input.";
 
 export function seriesToRule(series: RecurringSeries): RuleConfig {
@@ -147,17 +148,17 @@ export function toSeriesView(series: RecurringSeries): SeriesView {
 }
 
 // Serializes all operations on one series for the rest of the transaction.
-async function lockSeries(tx: Tx, seriesId: string) {
+export async function lockSeries(tx: Tx, seriesId: string) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${seriesId}, 0))`;
 }
 
-const loadSeries = (tx: Tx, userId: string, seriesId: string) => tx.recurringSeries.findFirst({ where: { id: seriesId, userId } });
+export const loadSeries = (tx: Tx, userId: string, seriesId: string) => tx.recurringSeries.findFirst({ where: { id: seriesId, userId } });
 
 // The instance with the greatest scheduled occurrence. Compared byte for byte
 // (COLLATE "C"), so the answer never depends on the database's locale.
-async function latestInstance(tx: Tx, seriesId: string) {
-  const rows = await tx.$queryRaw<Array<{ id: string; occurrenceKey: string; status: TaskStatus }>>`
-    SELECT id, "occurrenceKey", status::text AS status
+export async function latestInstance(tx: Tx, seriesId: string) {
+  const rows = await tx.$queryRaw<Array<{ id: string; occurrenceKey: string; status: TaskStatus; deletedAt: Date | null }>>`
+    SELECT id, "occurrenceKey", status::text AS status, "deletedAt"
     FROM tasks
     WHERE "seriesId" = ${seriesId}
     ORDER BY "occurrenceKey" COLLATE "C" DESC
@@ -216,13 +217,14 @@ async function markEnded(tx: Tx, series: RecurringSeries) {
   });
 }
 
-// Used after resume / reconcile / extending the end date. Creates the next
-// instance only when the TAIL instance is completed (otherwise completing the
-// tail will create it), starting after the later of the tail's occurrence and today.
-async function ensureNext(tx: Tx, series: RecurringSeries, now: LocalNow): Promise<InstanceRef | null> {
+// Used after resume / reconcile / extending the end date, and when the tail is moved to
+// Trash. Creates the next instance only when the TAIL instance is finished (completed, or in
+// Trash, which skips that occurrence); otherwise completing the tail will create it. Starts
+// after the later of the tail's occurrence and today.
+export async function ensureNext(tx: Tx, series: RecurringSeries, now: LocalNow): Promise<InstanceRef | null> {
   if (series.state !== "ACTIVE") return null;
   const tail = await latestInstance(tx, series.id);
-  if (tail && tail.status !== "COMPLETED") return null;
+  if (tail && tail.status !== "COMPLETED" && tail.deletedAt === null) return null;
   const rule = seriesToRule(series);
   const next = nextOccurrenceAfter(rule, referencePoint(rule, tail ? parseOccurrenceKey(tail.occurrenceKey) : null, now));
   if (!next) {
@@ -252,7 +254,7 @@ async function reconcileInTx(tx: Tx, series: RecurringSeries, now: LocalNow): Pr
 
 // Inside an operation, a failed reconcile must stop the operation (its result
 // depends on the series state), and be reported, not swallowed.
-async function reconcileForOperation(tx: Tx, ctx: ServiceContext, series: RecurringSeries) {
+export async function reconcileForOperation(tx: Tx, ctx: ServiceContext, series: RecurringSeries) {
   try {
     return await reconcileInTx(tx, series, localNowOf(ctx));
   } catch (error) {
@@ -263,7 +265,7 @@ async function reconcileForOperation(tx: Tx, ctx: ServiceContext, series: Recurr
 
 // Version-checked change of the series row. Returns the updated row, or aborts
 // with the reason (not found / stopped / stale version / wrong state).
-async function claimVersion(
+export async function claimVersion(
   tx: Tx,
   ctx: ServiceContext,
   seriesId: string,
@@ -302,7 +304,7 @@ export type CompleteOutcome = {
 // say so. Idempotent. Call inside a transaction (see completeTask).
 export async function completeTaskInTx(tx: Tx, ctx: ServiceContext, taskId: string): Promise<CompleteOutcome> {
   if (!idSchema.safeParse(taskId).success) return abort("NOT_FOUND", "This task was not found.");
-  let task = await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId } });
+  let task = await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId, ...ACTIVE_TASK } });
   if (!task) return abort("NOT_FOUND", "This task was not found.");
 
   let series: RecurringSeries | null = null;
@@ -311,7 +313,9 @@ export async function completeTaskInTx(tx: Tx, ctx: ServiceContext, taskId: stri
     const loaded = await loadSeries(tx, ctx.userId, task.seriesId);
     if (loaded) series = (await reconcileForOperation(tx, ctx, loaded)).series;
     // Another request may have completed this task while we waited for the lock.
-    task = (await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId } }))!;
+    const reloaded = await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId, ...ACTIVE_TASK } });
+    if (!reloaded) return abort("NOT_FOUND", "This task was not found."); // moved to Trash or archived meanwhile
+    task = reloaded;
   }
 
   const done = async (alreadyCompleted: boolean, successor: InstanceRef | null, state: SeriesState | null = series?.state ?? null): Promise<CompleteOutcome> => ({
@@ -443,7 +447,7 @@ export async function convertToRecurring(ctx: ServiceContext, taskId: string, in
 }
 
 export async function convertInTx(tx: Tx, ctx: ServiceContext, taskId: string, repeat: ConvertInput): Promise<CreatedSeries> {
-  const task = await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId } });
+  const task = await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId, ...ACTIVE_TASK } });
   if (!task) return abort("NOT_FOUND", "This task was not found.");
   if (task.seriesId) return abort("ALREADY_RECURRING", "This task already repeats.");
   const fields: NewTaskFields = {
@@ -478,7 +482,7 @@ export async function disableRecurrence(ctx: ServiceContext, taskId: string, exp
 }
 
 export async function disableRecurrenceInTx(tx: Tx, ctx: ServiceContext, taskId: string, expectedVersion: number): Promise<{ seriesId: string; version: number }> {
-  const task = await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId } });
+  const task = await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId, ...ACTIVE_TASK } });
   if (!task) return abort("NOT_FOUND", "This task was not found.");
   if (!task.seriesId) return abort("NOT_RECURRING", "This task does not repeat.");
   await lockSeries(tx, task.seriesId);
@@ -788,7 +792,7 @@ export async function updateTaskAndSeriesInTx(
   const parsed = seriesPatchSchema.safeParse(patch);
   if (!parsed.success) return abort("VALIDATION", firstMessage(parsed.error));
   if (!idSchema.safeParse(taskId).success) return abort("NOT_FOUND", "This task was not found.");
-  const task = await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId } });
+  const task = await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId, ...ACTIVE_TASK } });
   if (!task) return abort("NOT_FOUND", "This task was not found.");
   if (!task.seriesId) return abort("NOT_RECURRING", "This task does not repeat.");
   const seriesId = task.seriesId;
@@ -810,7 +814,7 @@ export async function updateTaskAndSeriesInTx(
   }
 
   if (dates) {
-    const current = (await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId } }))!;
+    const current = (await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId, ...ACTIVE_TASK } })) ?? abort("NOT_FOUND", "This task was not found.");
     const change = applyDeadlineChange(
       { deadlineDate: dateFromDb(current.deadlineDate), originalDeadlineDate: dateFromDb(current.originalDeadlineDate), rescheduleCount: current.rescheduleCount },
       dates.deadlineDate,

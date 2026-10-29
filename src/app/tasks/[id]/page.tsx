@@ -10,6 +10,7 @@ import { RepeatBadge } from "@/components/repeat-badge";
 import { SeriesPanel } from "@/components/series-panel";
 import { ImportanceBadge, StatusBadge, TimingBadges } from "@/components/task-badges";
 import { TaskEditor } from "@/components/task-editor";
+import { TaskRemoval } from "@/components/task-removal";
 import { formatInstant, formatLocalDate, formatLocalDateTime, nowInTimeZone } from "@/lib/local-time";
 import { getSeries, getSeriesForecast } from "@/lib/recurrence/service";
 import { getMyCategories, getMyCategory } from "@/lib/categories";
@@ -66,6 +67,21 @@ async function TaskDetails({ params, searchParams }: Pick<PageProps<"/tasks/[id]
           {task.category && <CategoryChip category={task.category} />}
         </div>
 
+        {task.archivedAt ? (
+          <>
+            <p className="mt-4 rounded-lg bg-muted px-3 py-2 text-sm" data-archived-notice>
+              This task is archived, so it is view-only. Restore it to change it.
+            </p>
+            <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 rounded-xl border bg-card p-4 text-sm shadow-xs sm:grid-cols-2" data-archived-details>
+              <Detail label="Description" value={task.description ?? "None"} />
+              <Detail label="Planned" value={task.plannedDate ? formatLocalDateTime(task.plannedDate, task.plannedTime) : "None"} />
+              <Detail label="Deadline" value={task.deadlineDate ? formatLocalDateTime(task.deadlineDate, task.deadlineTime) : "None"} />
+              <Detail label="Completed" value={task.completedAt ? formatInstant(task.completedAt, user.timeZone) : "Not yet"} />
+              <Detail label="Archived" value={formatInstant(task.archivedAt, user.timeZone)} />
+              <Detail label="Created" value={formatInstant(task.createdAt, user.timeZone)} />
+            </dl>
+          </>
+        ) : (
         <TaskEditor
           task={task}
           categories={categories}
@@ -93,6 +109,8 @@ async function TaskDetails({ params, searchParams }: Pick<PageProps<"/tasks/[id]
             </>
           }
         />
+        )}
+        <TaskRemoval taskId={task.id} completed={task.status === "COMPLETED"} archived={task.archivedAt !== null} series={series} />
       </main>
     </>
   );
