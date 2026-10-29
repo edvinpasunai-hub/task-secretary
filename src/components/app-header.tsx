@@ -1,7 +1,9 @@
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { AppNav } from "@/components/app-nav";
+import { NotificationBell, NotificationBellFallback } from "@/components/notification-bell";
 import { LogoutButton } from "@/components/logout-button";
 import { SecretaryAvatar } from "@/components/secretary-avatar";
 import { buttonVariants } from "@/components/ui/button";
@@ -21,6 +23,9 @@ export function AppHeader({ user }: { user: CurrentUser }) {
           <Plus aria-hidden />
           Add task
         </Link>
+        <Suspense fallback={<NotificationBellFallback />}>
+          <NotificationBell user={user} />
+        </Suspense>
         <LogoutButton compact />
       </div>
       <AppNav />

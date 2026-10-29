@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { dateFromDb, timeFromDb } from "@/lib/local-time";
 import { logRecurrenceError } from "@/lib/recurrence/log";
 import { reconcileExpiredPauses } from "@/lib/recurrence/service";
+import { reconcileReminders } from "@/lib/reminders/service";
 import { requireUser } from "@/lib/session";
 import { taskIdSchema } from "@/lib/task-validation";
 
@@ -80,6 +81,13 @@ export async function getMyTasks(categoryId?: string): Promise<TaskView[]> {
     await reconcileExpiredPauses({ userId: user.id });
   } catch (error) {
     logRecurrenceError("recurrence.reconcile_check_failed", { userId: user.id }, error);
+  }
+  // Reminders that have become due are created here too (no background job); a failure
+  // is logged and never stops the list.
+  try {
+    await reconcileReminders({ userId: user.id });
+  } catch (error) {
+    logRecurrenceError("reminders.reconcile_failed", { userId: user.id }, error);
   }
   const tasks = await prisma.task.findMany({
     where: { userId: user.id, ...(categoryId && { categoryId }) },

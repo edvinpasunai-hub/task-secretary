@@ -152,6 +152,8 @@ model Task {
 
   // The same occurrence of a series can never exist twice.
   @@unique([seriesId, occurrenceKey])
+  // Lets reminders point at "this task of this user" (the database enforces same user).
+  @@unique([id, userId])
   @@index([userId, status, deadlineDate])
   @@index([categoryId])
   @@map("tasks")
@@ -267,7 +269,7 @@ enum ReminderType {
 model Reminder {
   id           String       @id @default(cuid())
   taskId       String
-  task         Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task         Task         @relation(fields: [taskId, userId], references: [id, userId], onDelete: Cascade)
   userId       String
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   type         ReminderType
@@ -277,10 +279,12 @@ model Reminder {
   scheduledAt  DateTime
   // Set by "Remind Later": the reminder stays hidden until this moment.
   snoozedUntil DateTime?
+  // Set when the user has read it; cleared again by "Remind Later".
+  readAt       DateTime?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
   @@unique([taskId, type, forDueDate])
-  @@index([userId])
+  @@index([userId, scheduledAt])
   @@map("reminders")
 }
