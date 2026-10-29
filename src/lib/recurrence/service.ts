@@ -5,9 +5,10 @@ import "server-only";
 // There are no Server Actions here on purpose: the UI stage (4.3.2) wraps these
 // with actions that resolve the user via requireUser().
 //
-// DEFERRED to Stage 4.3.2 (not a product requirement, only a limit of this stage):
-// changing a series between date-only and timed (adding, changing the meaning of
-// or removing its time of day). Within a timed series the time CAN be changed.
+// A series may switch between date-only and timed in either direction (see
+// updateSeries). Instances keep the occurrence key they were created with, so a
+// series can hold instances of both kinds for a while; the keys still order
+// correctly ("2026-11-09" sorts as 00:00 of that day).
 //
 // How duplicates and races are prevented (see also the migration):
 //  1. Every operation on a series runs in ONE transaction that first takes a
@@ -49,6 +50,7 @@ import {
   fail,
   ok,
   type InstanceRef,
+  type NewTaskFields,
   type RecurrenceErrorCode,
   type Result,
   type SeriesState,
@@ -67,7 +69,7 @@ import {
   type ConvertInput,
   type SeriesPatch,
 } from "@/lib/recurrence/validation";
-import { dateFromDb, dateToDb, nowInTimeZone, timeFromDb, timeToDb, type LocalDate, type LocalNow } from "@/lib/local-time";
+import { dateFromDb, dateToDb, nowInTimeZone, timeFromDb, timeToDb, type LocalDate, type LocalNow, type LocalTime } from "@/lib/local-time";
 import { applyDeadlineChange } from "@/lib/task-rules";
 
 type Tx = Prisma.TransactionClient;
@@ -80,6 +82,13 @@ const TX_OPTIONS = { timeout: 20_000, maxWait: 10_000 } as const;
 // Prisma's "transaction conflict" and "foreign key violated" (a category deleted a
 // moment ago): the whole operation is simply tried again from the start.
 const RETRYABLE_CODES = new Set(["P2034", "P2003"]);
+
+// Runs `fn` as ONE transaction. Expected problems thrown with abort() become a typed
+// failure and roll everything back. Server Actions use this to save a task and its
+// series together.
+export async function runInTransaction<T>(fn: (tx: Tx) => Promise<T>): Promise<Result<T>> {
+  return runTx(fn);
+}
 
 async function runTx<T>(fn: (tx: Tx) => Promise<T>): Promise<Result<T>> {
   for (let attempt = 1; ; attempt++) {
@@ -342,63 +351,121 @@ export function completeTask(ctx: ServiceContext, taskId: string): Promise<Resul
 // Making an ordinary task recurring / turning recurrence off
 // ---------------------------------------------------------------------------
 
-export async function convertToRecurring(
-  ctx: ServiceContext,
-  taskId: string,
-  input: ConvertInput,
-): Promise<Result<{ seriesId: string; taskId: string; version: number; successor: InstanceRef | null }>> {
+type CreatedSeries = { seriesId: string; taskId: string; version: number; successor: InstanceRef | null };
+
+// The category of a series template must be one of the user's own.
+async function assertOwnCategory(tx: Tx, userId: string, categoryId: string | null) {
+  if (categoryId && (await tx.category.count({ where: { id: categoryId, userId } })) !== 1) abort("VALIDATION", "Please choose one of your categories.");
+}
+
+// The repeat rule for a task with these dates. Recurrence is anchored to the planned date.
+function ruleForTask(
+  task: Pick<NewTaskFields, "plannedDate" | "plannedTime" | "deadlineDate" | "deadlineTime">,
+  repeat: ConvertInput,
+): RuleConfig {
+  if (!task.plannedDate) {
+    return abort("VALIDATION", "A repeating task needs a planned date.", { issues: [{ field: "anchorDate", code: "PLANNED_DATE_REQUIRED", message: "A repeating task needs a planned date." }] });
+  }
+  const rule = ruleFromAnchor(repeat.type, task.plannedDate, {
+    weekdays: repeat.weekdays,
+    plannedTime: task.plannedTime,
+    endDate: repeat.endDate ?? null,
+    deadlineOffsetDays: deadlineOffsetFor(task.plannedDate, task.deadlineDate),
+    deadlineTime: task.deadlineDate ? task.deadlineTime : null,
+  });
+  const issues = validateRule(rule);
+  if (issues.length > 0) return abort("VALIDATION", issues[0].message, { issues });
+  return rule;
+}
+
+async function insertSeries(tx: Tx, userId: string, rule: RuleConfig, template: Pick<NewTaskFields, "title" | "description" | "importance" | "estimatedMinutes" | "categoryId">) {
+  const series = await tx.recurringSeries.create({
+    data: {
+      userId,
+      type: rule.type,
+      weekdays: rule.weekdays,
+      monthlyDay: rule.monthlyDay,
+      anchorDate: dateToDb(rule.anchorDate)!,
+      plannedTime: timeToDb(rule.plannedTime),
+      title: template.title,
+      description: template.description,
+      importance: template.importance,
+      estimatedMinutes: template.estimatedMinutes,
+      categoryId: template.categoryId,
+      deadlineOffsetDays: rule.deadlineOffsetDays,
+      deadlineTime: timeToDb(rule.deadlineTime),
+      endDate: dateToDb(rule.endDate),
+    },
+  });
+  await lockSeries(tx, series.id);
+  return series;
+}
+
+// Creates a NEW repeating task: the series and its first instance, in one
+// transaction. If anything fails, neither exists.
+export async function createRecurringTask(ctx: ServiceContext, task: NewTaskFields, repeat: ConvertInput): Promise<Result<CreatedSeries>> {
+  const parsed = convertInputSchema.safeParse(repeat);
+  if (!parsed.success) return fail("VALIDATION", firstMessage(parsed.error));
+  return runTx((tx) => createRecurringTaskInTx(tx, ctx, task, parsed.data));
+}
+
+export async function createRecurringTaskInTx(tx: Tx, ctx: ServiceContext, task: NewTaskFields, repeat: ConvertInput): Promise<CreatedSeries> {
+  await assertOwnCategory(tx, ctx.userId, task.categoryId);
+  const rule = ruleForTask(task, repeat);
+  const series = await insertSeries(tx, ctx.userId, rule, task);
+  const created = await tx.task.create({
+    data: {
+      userId: ctx.userId,
+      seriesId: series.id,
+      occurrenceKey: buildOccurrence(rule.anchorDate, rule.plannedTime).key,
+      title: task.title,
+      description: task.description,
+      importance: task.importance,
+      categoryId: task.categoryId,
+      estimatedMinutes: task.estimatedMinutes,
+      plannedDate: dateToDb(task.plannedDate),
+      plannedTime: timeToDb(task.plannedTime),
+      deadlineDate: dateToDb(task.deadlineDate),
+      deadlineTime: timeToDb(task.deadlineTime),
+      originalDeadlineDate: dateToDb(task.deadlineDate),
+    },
+  });
+  return { seriesId: series.id, taskId: created.id, version: series.version, successor: null };
+}
+
+// Makes an existing ordinary task repeat. The SAME task becomes the first instance:
+// id, status and history stay.
+export async function convertToRecurring(ctx: ServiceContext, taskId: string, input: ConvertInput): Promise<Result<CreatedSeries>> {
   const parsed = convertInputSchema.safeParse(input);
   if (!parsed.success) return fail("VALIDATION", firstMessage(parsed.error));
   if (!idSchema.safeParse(taskId).success) return fail("NOT_FOUND", "This task was not found.");
+  return runTx((tx) => convertInTx(tx, ctx, taskId, parsed.data));
+}
 
-  return runTx(async (tx) => {
-    const task = await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId } });
-    if (!task) return abort("NOT_FOUND", "This task was not found.");
-    if (task.seriesId) return abort("ALREADY_RECURRING", "This task already repeats.");
-    const plannedDate = dateFromDb(task.plannedDate);
-    if (!plannedDate) return abort("VALIDATION", "A recurring task needs a planned date.");
-    // The category is copied into the series template, so it must be the user's own.
-    if (task.categoryId && (await tx.category.count({ where: { id: task.categoryId, userId: ctx.userId } })) !== 1) {
-      return abort("VALIDATION", "Please choose one of your categories.");
-    }
-
-    const rule = ruleFromAnchor(parsed.data.type, plannedDate, {
-      weekdays: parsed.data.weekdays,
-      plannedTime: timeFromDb(task.plannedTime),
-      endDate: parsed.data.endDate ?? null,
-      deadlineOffsetDays: deadlineOffsetFor(plannedDate, dateFromDb(task.deadlineDate)),
-      deadlineTime: timeFromDb(task.deadlineDate ? task.deadlineTime : null),
-    });
-    const issues = validateRule(rule);
-    if (issues.length > 0) return abort("VALIDATION", issues[0].message, { issues });
-
-    const series = await tx.recurringSeries.create({
-      data: {
-        userId: ctx.userId,
-        type: rule.type,
-        weekdays: rule.weekdays,
-        monthlyDay: rule.monthlyDay,
-        anchorDate: dateToDb(rule.anchorDate)!,
-        plannedTime: timeToDb(rule.plannedTime),
-        title: task.title,
-        description: task.description,
-        importance: task.importance,
-        estimatedMinutes: task.estimatedMinutes,
-        categoryId: task.categoryId,
-        deadlineOffsetDays: rule.deadlineOffsetDays,
-        deadlineTime: timeToDb(rule.deadlineTime),
-        endDate: dateToDb(rule.endDate),
-      },
-    });
-    await lockSeries(tx, series.id);
-    // The SAME task becomes the first instance: id, status and history stay.
-    await tx.task.update({
-      where: { id: task.id, userId: ctx.userId },
-      data: { seriesId: series.id, occurrenceKey: buildOccurrence(plannedDate, rule.plannedTime).key },
-    });
-    const successor = task.status === "COMPLETED" ? await ensureNext(tx, series, localNowOf(ctx)) : null;
-    return { seriesId: series.id, taskId: task.id, version: (await loadSeries(tx, ctx.userId, series.id))!.version, successor };
+export async function convertInTx(tx: Tx, ctx: ServiceContext, taskId: string, repeat: ConvertInput): Promise<CreatedSeries> {
+  const task = await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId } });
+  if (!task) return abort("NOT_FOUND", "This task was not found.");
+  if (task.seriesId) return abort("ALREADY_RECURRING", "This task already repeats.");
+  const fields: NewTaskFields = {
+    title: task.title,
+    description: task.description,
+    importance: task.importance,
+    categoryId: task.categoryId,
+    estimatedMinutes: task.estimatedMinutes,
+    plannedDate: dateFromDb(task.plannedDate),
+    plannedTime: timeFromDb(task.plannedTime),
+    deadlineDate: dateFromDb(task.deadlineDate),
+    deadlineTime: timeFromDb(task.deadlineTime),
+  };
+  await assertOwnCategory(tx, ctx.userId, task.categoryId);
+  const rule = ruleForTask(fields, repeat);
+  const series = await insertSeries(tx, ctx.userId, rule, fields);
+  await tx.task.update({
+    where: { id: task.id, userId: ctx.userId },
+    data: { seriesId: series.id, occurrenceKey: buildOccurrence(rule.anchorDate, rule.plannedTime).key },
   });
+  const successor = task.status === "COMPLETED" ? await ensureNext(tx, series, localNowOf(ctx)) : null;
+  return { seriesId: series.id, taskId: task.id, version: (await loadSeries(tx, ctx.userId, series.id))!.version, successor };
 }
 
 // "Repeat: Never". The series stops for good; the task becomes an ordinary task.
@@ -407,15 +474,17 @@ export async function convertToRecurring(
 export async function disableRecurrence(ctx: ServiceContext, taskId: string, expectedVersion: number): Promise<Result<{ seriesId: string; version: number }>> {
   if (!idSchema.safeParse(taskId).success) return fail("NOT_FOUND", "This task was not found.");
   if (!versionSchema.safeParse(expectedVersion).success) return fail("VALIDATION", "A version is required.");
-  return runTx(async (tx) => {
-    const task = await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId } });
-    if (!task) return abort("NOT_FOUND", "This task was not found.");
-    if (!task.seriesId) return abort("NOT_RECURRING", "This task does not repeat.");
-    await lockSeries(tx, task.seriesId);
-    const stopped = await claimVersion(tx, ctx, task.seriesId, expectedVersion, ["ACTIVE", "PAUSED", "ENDED"], { state: "STOPPED", pausedUntil: null });
-    await tx.task.update({ where: { id: task.id, userId: ctx.userId }, data: { seriesId: null, occurrenceKey: null } });
-    return { seriesId: stopped.id, version: stopped.version };
-  });
+  return runTx((tx) => disableRecurrenceInTx(tx, ctx, taskId, expectedVersion));
+}
+
+export async function disableRecurrenceInTx(tx: Tx, ctx: ServiceContext, taskId: string, expectedVersion: number): Promise<{ seriesId: string; version: number }> {
+  const task = await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId } });
+  if (!task) return abort("NOT_FOUND", "This task was not found.");
+  if (!task.seriesId) return abort("NOT_RECURRING", "This task does not repeat.");
+  await lockSeries(tx, task.seriesId);
+  const stopped = await claimVersion(tx, ctx, task.seriesId, expectedVersion, ["ACTIVE", "PAUSED", "ENDED"], { state: "STOPPED", pausedUntil: null });
+  await tx.task.update({ where: { id: task.id, userId: ctx.userId }, data: { seriesId: null, occurrenceKey: null } });
+  return { seriesId: stopped.id, version: stopped.version };
 }
 
 // Stops the whole series without touching any task (the building block for
@@ -548,14 +617,18 @@ function firstOccurrenceOnOrAfter(rule: RuleConfig, date: LocalDate): Occurrence
   return nextOccurrenceAfter(probe, { date, time: rule.plannedTime === null ? null : "23:59" });
 }
 
-// Changes the series template and/or schedule.
+// Changes the series template, schedule and/or end date.
 // - Template fields (title, description, importance, duration, category) are copied
 //   to every UNFINISHED instance; completed history is never touched.
 // - Schedule fields (type, weekdays, monthly day, time of day, deadline rule) need
 //   `fromInstanceId`, the instance being edited: only that instance is
 //   recalculated (left alone if its date was postponed by hand); other unfinished
 //   instances keep their dates and later instances follow the new rule.
-// - Switching between date-only and timed is not supported yet (Stage 4.3.2).
+// - The time of day can be added, changed or removed: a series switches between
+//   date-only and timed in either direction. Existing instances keep their old
+//   occurrence keys; new ones use the new kind.
+// - endDate (inclusive) can be set, shortened, extended or removed, in the same
+//   version-checked step. Extending an ended series brings it back.
 export async function updateSeries(
   ctx: ServiceContext,
   seriesId: string,
@@ -566,110 +639,199 @@ export async function updateSeries(
   if (!idSchema.safeParse(seriesId).success) return fail("NOT_FOUND", "This series was not found.");
   const parsed = seriesPatchSchema.safeParse(patch);
   if (!parsed.success) return fail("VALIDATION", firstMessage(parsed.error));
-  const data = parsed.data;
-  const has = (field: keyof typeof data) => field in data && data[field] !== undefined;
-  const touchesSchedule = SCHEDULE_FIELDS.some(has);
-  const touchesTemplate = TEMPLATE_FIELDS.some(has);
-  if (touchesSchedule && !options.fromInstanceId) return fail("VALIDATION", "Changing the schedule needs the task you are editing.");
+  if (SCHEDULE_FIELDS.some((field) => parsed.data[field] !== undefined) && !options.fromInstanceId) {
+    return fail("VALIDATION", "Changing the schedule needs the task you are editing.");
+  }
   if (options.fromInstanceId && !idSchema.safeParse(options.fromInstanceId).success) return fail("NOT_FOUND", "This task was not found.");
 
   return runTx(async (tx) => {
     await lockSeries(tx, seriesId);
-    const loaded = await loadSeries(tx, ctx.userId, seriesId);
-    if (!loaded) return abort("NOT_FOUND", "This series was not found.");
-    if (loaded.state === "STOPPED") return abort("SERIES_STOPPED", "Repeating was turned off for this series.");
-    const series = (await reconcileForOperation(tx, ctx, loaded)).series;
+    return updateSeriesInTx(tx, ctx, seriesId, expectedVersion, parsed.data, options);
+  });
+}
+
+type ParsedPatch = ReturnType<typeof seriesPatchSchema.parse>;
+
+// The body of updateSeries. The caller holds the series lock and has validated `data`.
+async function updateSeriesInTx(tx: Tx, ctx: ServiceContext, seriesId: string, expectedVersion: number, data: ParsedPatch, options: { fromInstanceId?: string }): Promise<SeriesView> {
+  const has = (field: keyof ParsedPatch) => field in data && data[field] !== undefined;
+  const touchesSchedule = SCHEDULE_FIELDS.some(has);
+  const touchesTemplate = TEMPLATE_FIELDS.some(has);
+  const touchesEnd = has("endDate");
+
+  const loaded = await loadSeries(tx, ctx.userId, seriesId);
+  if (!loaded) return abort("NOT_FOUND", "This series was not found.");
+  if (loaded.state === "STOPPED") return abort("SERIES_STOPPED", "Repeating was turned off for this series.");
+  const series = (await reconcileForOperation(tx, ctx, loaded)).series;
+  if (series.version !== expectedVersion) {
+    return abort("CONFLICT", "This series was changed somewhere else. Please refresh and try again.", { currentVersion: series.version });
+  }
+  if (has("categoryId") && data.categoryId) await assertOwnCategory(tx, ctx.userId, data.categoryId);
+
+  const seriesData: Prisma.RecurringSeriesUpdateManyMutationInput = {};
+  for (const field of ["title", "description", "importance", "estimatedMinutes"] as const) if (has(field)) Object.assign(seriesData, { [field]: data[field] });
+
+  let rule: RuleConfig = seriesToRule(series);
+  let instanceUpdate: Prisma.TaskUncheckedUpdateInput | null = null;
+
+  // ---- schedule change: recalculate the edited instance only ----
+  if (touchesSchedule) {
+    const instance = await tx.task.findFirst({ where: { id: options.fromInstanceId, userId: ctx.userId, seriesId } });
+    if (!instance) return abort("NOT_FOUND", "This task was not found.");
+    if (instance.status === "COMPLETED") return abort("VALIDATION", "Finished tasks cannot be used to change the schedule.");
+    const occurrence = parseOccurrenceKey(instance.occurrenceKey!);
+
+    const type = data.type ?? series.type;
+    const weekdays =
+      type === "DAILY" || type === "MONTHLY"
+        ? []
+        : type === "WEEKLY"
+          ? (data.weekdays ?? (series.type === "WEEKLY" ? series.weekdays : [isoWeekday(occurrence.date)]))
+          : normalizeWeekdays(data.weekdays ?? series.weekdays);
+    const merged: RuleConfig = {
+      ...rule,
+      type,
+      weekdays,
+      monthlyDay: type === "MONTHLY" ? (data.monthlyDay ?? (series.type === "MONTHLY" ? series.monthlyDay : parseCivil(occurrence.date).day)) : null,
+      plannedTime: has("plannedTime") ? data.plannedTime! : timeFromDb(series.plannedTime),
+      deadlineOffsetDays: "deadlineOffsetDays" in data ? (data.deadlineOffsetDays ?? null) : series.deadlineOffsetDays,
+      deadlineTime: "deadlineTime" in data ? (data.deadlineTime ?? null) : timeFromDb(series.deadlineTime),
+      endDate: touchesEnd ? (data.endDate ?? null) : dateFromDb(series.endDate),
+      anchorDate: occurrence.date,
+    };
+    const target = firstOccurrenceOnOrAfter(merged, occurrence.date);
+    if (!target) return abort("VALIDATION", "No occurrence of this schedule falls on or before the end date.");
+    rule = { ...merged, anchorDate: target.date };
+    const issues = validateRule(rule);
+    if (issues.length > 0) return abort("VALIDATION", issues[0].message, { issues });
+
+    const manuallyMoved = dateFromDb(instance.plannedDate) !== occurrence.date || timeFromDb(instance.plannedTime) !== occurrence.time;
+    if (!manuallyMoved) {
+      if (target.key !== occurrence.key && (await tx.task.count({ where: { seriesId, occurrenceKey: target.key } })) > 0) {
+        return abort("OCCURRENCE_CONFLICT", "Another task of this series already has that date.");
+      }
+      const deadline = deadlineFor(rule, target.date);
+      const change = applyDeadlineChange(
+        { deadlineDate: dateFromDb(instance.deadlineDate), originalDeadlineDate: dateFromDb(instance.originalDeadlineDate), rescheduleCount: instance.rescheduleCount },
+        deadline?.date ?? null,
+      );
+      instanceUpdate = {
+        occurrenceKey: target.key,
+        plannedDate: dateToDb(target.date),
+        plannedTime: timeToDb(target.time),
+        deadlineDate: dateToDb(deadline?.date ?? null),
+        deadlineTime: timeToDb(deadline?.time ?? null),
+        originalDeadlineDate: dateToDb(change.originalDeadlineDate),
+        rescheduleCount: change.rescheduleCount,
+      };
+    }
+    Object.assign(seriesData, {
+      type: rule.type,
+      weekdays: rule.weekdays,
+      monthlyDay: rule.monthlyDay,
+      anchorDate: dateToDb(rule.anchorDate),
+      plannedTime: timeToDb(rule.plannedTime),
+      deadlineOffsetDays: rule.deadlineOffsetDays,
+      deadlineTime: timeToDb(rule.deadlineTime),
+    });
+  } else if (touchesEnd) {
+    rule = { ...rule, endDate: data.endDate ?? null };
+    const issues = validateRule(rule);
+    if (issues.length > 0) return abort("VALIDATION", issues[0].message, { issues });
+  }
+
+  // ---- end date ----
+  let reviveEnded = false;
+  if (touchesEnd) {
+    seriesData.endDate = dateToDb(rule.endDate);
+    if (series.state === "ENDED") {
+      // An ended series continues only if the new end date leaves room for a next occurrence.
+      const tail = await latestInstance(tx, seriesId);
+      const reference = referencePoint(rule, tail ? parseOccurrenceKey(tail.occurrenceKey) : null, localNowOf(ctx));
+      if (nextOccurrenceAfter(rule, reference)) {
+        seriesData.state = "ACTIVE";
+        reviveEnded = true;
+      }
+    }
+  }
+
+  // ---- apply (version-checked in the same transaction) ----
+  const updated = await claimVersion(tx, ctx, seriesId, expectedVersion, ["ACTIVE", "PAUSED", "ENDED"], seriesData);
+  if (has("categoryId")) await tx.recurringSeries.update({ where: { id: seriesId }, data: { categoryId: data.categoryId ?? null } });
+
+  if (touchesTemplate) {
+    const templateData: Prisma.TaskUncheckedUpdateManyInput = {};
+    for (const field of TEMPLATE_FIELDS) if (has(field)) Object.assign(templateData, { [field]: data[field] });
+    await tx.task.updateMany({ where: { seriesId, userId: ctx.userId, status: { not: "COMPLETED" } }, data: templateData });
+  }
+  if (instanceUpdate) await tx.task.update({ where: { id: options.fromInstanceId, userId: ctx.userId }, data: instanceUpdate });
+  if (reviveEnded) await ensureNext(tx, updated, localNowOf(ctx));
+  return toSeriesView((await loadSeries(tx, ctx.userId, updated.id))!);
+}
+
+// The dates the edit form shows for ONE task.
+export type InstanceDates = { plannedDate: LocalDate; plannedTime: LocalTime | null; deadlineDate: LocalDate | null; deadlineTime: LocalTime | null };
+
+// "This and future tasks" from the edit form of one task, in a single transaction:
+// the series change (template, repeat rule, end date) and this task's own dates.
+// The version check covers the whole save; a stale form changes nothing.
+// Moving this task's planned date is a postponement of this task only: the series
+// schedule is unaffected.
+export async function updateTaskAndSeriesInTx(
+  tx: Tx,
+  ctx: ServiceContext,
+  taskId: string,
+  expectedVersion: number,
+  patch: SeriesPatch,
+  dates: InstanceDates | null,
+): Promise<SeriesView> {
+  const parsed = seriesPatchSchema.safeParse(patch);
+  if (!parsed.success) return abort("VALIDATION", firstMessage(parsed.error));
+  if (!idSchema.safeParse(taskId).success) return abort("NOT_FOUND", "This task was not found.");
+  const task = await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId } });
+  if (!task) return abort("NOT_FOUND", "This task was not found.");
+  if (!task.seriesId) return abort("NOT_RECURRING", "This task does not repeat.");
+  const seriesId = task.seriesId;
+
+  await lockSeries(tx, seriesId);
+  const patchIsEmpty = Object.values(parsed.data).every((value) => value === undefined);
+  let view: SeriesView;
+  if (patchIsEmpty) {
+    const current = await loadSeries(tx, ctx.userId, seriesId);
+    if (!current) return abort("NOT_FOUND", "This series was not found.");
+    if (current.state === "STOPPED") return abort("SERIES_STOPPED", "Repeating was turned off for this series.");
+    const series = (await reconcileForOperation(tx, ctx, current)).series;
     if (series.version !== expectedVersion) {
       return abort("CONFLICT", "This series was changed somewhere else. Please refresh and try again.", { currentVersion: series.version });
     }
+    view = toSeriesView(series);
+  } else {
+    view = await updateSeriesInTx(tx, ctx, seriesId, expectedVersion, parsed.data, { fromInstanceId: taskId });
+  }
 
-    if (has("categoryId") && data.categoryId) {
-      if ((await tx.category.count({ where: { id: data.categoryId, userId: ctx.userId } })) !== 1) {
-        return abort("VALIDATION", "Please choose one of your categories.");
-      }
-    }
-    if (has("plannedTime") && (data.plannedTime === null) !== (series.plannedTime === null)) {
-      return abort("VALIDATION", "Adding or removing the time of day is not supported yet.", { issues: [{ field: "plannedTime", code: "TIME_MODE_CHANGE_NOT_SUPPORTED", message: "Adding or removing the time of day is not supported yet." }] });
-    }
+  if (dates) {
+    const current = (await tx.task.findFirst({ where: { id: taskId, userId: ctx.userId } }))!;
+    const change = applyDeadlineChange(
+      { deadlineDate: dateFromDb(current.deadlineDate), originalDeadlineDate: dateFromDb(current.originalDeadlineDate), rescheduleCount: current.rescheduleCount },
+      dates.deadlineDate,
+    );
+    await tx.task.update({
+      where: { id: taskId, userId: ctx.userId },
+      data: {
+        plannedDate: dateToDb(dates.plannedDate),
+        plannedTime: timeToDb(dates.plannedTime),
+        deadlineDate: dateToDb(dates.deadlineDate),
+        deadlineTime: timeToDb(dates.deadlineTime),
+        originalDeadlineDate: dateToDb(change.originalDeadlineDate),
+        rescheduleCount: change.rescheduleCount,
+      },
+    });
+  }
+  return view;
+}
 
-    const seriesData: Prisma.RecurringSeriesUpdateManyMutationInput = {};
-    for (const field of ["title", "description", "importance", "estimatedMinutes"] as const) if (has(field)) Object.assign(seriesData, { [field]: data[field] });
-    const seriesRelationData: { categoryId?: string | null } = has("categoryId") ? { categoryId: data.categoryId ?? null } : {};
-
-    // ---- schedule change: recalculate the edited instance only ----
-    let instanceUpdate: Prisma.TaskUncheckedUpdateInput | null = null;
-    if (touchesSchedule) {
-      const instance = await tx.task.findFirst({ where: { id: options.fromInstanceId, userId: ctx.userId, seriesId } });
-      if (!instance) return abort("NOT_FOUND", "This task was not found.");
-      if (instance.status === "COMPLETED") return abort("VALIDATION", "Finished tasks cannot be used to change the schedule.");
-      const occurrence = parseOccurrenceKey(instance.occurrenceKey!);
-
-      const type = data.type ?? series.type;
-      const weekdays =
-        type === "DAILY" || type === "MONTHLY"
-          ? []
-          : type === "WEEKLY"
-            ? (data.weekdays ?? (series.type === "WEEKLY" ? series.weekdays : [isoWeekday(occurrence.date)]))
-            : normalizeWeekdays(data.weekdays ?? series.weekdays);
-      const merged: RuleConfig = {
-        ...seriesToRule(series),
-        type,
-        weekdays,
-        monthlyDay: type === "MONTHLY" ? (data.monthlyDay ?? (series.type === "MONTHLY" ? series.monthlyDay : parseCivil(occurrence.date).day)) : null,
-        plannedTime: has("plannedTime") ? data.plannedTime! : timeFromDb(series.plannedTime),
-        deadlineOffsetDays: "deadlineOffsetDays" in data ? (data.deadlineOffsetDays ?? null) : series.deadlineOffsetDays,
-        deadlineTime: "deadlineTime" in data ? (data.deadlineTime ?? null) : timeFromDb(series.deadlineTime),
-        anchorDate: occurrence.date,
-      };
-      const target = firstOccurrenceOnOrAfter(merged, occurrence.date);
-      if (!target) return abort("VALIDATION", "No occurrence of this schedule falls on or before the end date.");
-      const rule: RuleConfig = { ...merged, anchorDate: target.date };
-      const issues = validateRule(rule);
-      if (issues.length > 0) return abort("VALIDATION", issues[0].message, { issues });
-
-      const manuallyMoved = dateFromDb(instance.plannedDate) !== occurrence.date || timeFromDb(instance.plannedTime) !== occurrence.time;
-      if (!manuallyMoved) {
-        if (target.key !== occurrence.key && (await tx.task.count({ where: { seriesId, occurrenceKey: target.key } })) > 0) {
-          return abort("OCCURRENCE_CONFLICT", "Another task of this series already has that date.");
-        }
-        const deadline = deadlineFor(rule, target.date);
-        const change = applyDeadlineChange(
-          { deadlineDate: dateFromDb(instance.deadlineDate), originalDeadlineDate: dateFromDb(instance.originalDeadlineDate), rescheduleCount: instance.rescheduleCount },
-          deadline?.date ?? null,
-        );
-        instanceUpdate = {
-          occurrenceKey: target.key,
-          plannedDate: dateToDb(target.date),
-          plannedTime: timeToDb(target.time),
-          deadlineDate: dateToDb(deadline?.date ?? null),
-          deadlineTime: timeToDb(deadline?.time ?? null),
-          originalDeadlineDate: dateToDb(change.originalDeadlineDate),
-          rescheduleCount: change.rescheduleCount,
-        };
-      }
-      Object.assign(seriesData, {
-        type: rule.type,
-        weekdays: rule.weekdays,
-        monthlyDay: rule.monthlyDay,
-        anchorDate: dateToDb(rule.anchorDate),
-        plannedTime: timeToDb(rule.plannedTime),
-        deadlineOffsetDays: rule.deadlineOffsetDays,
-        deadlineTime: timeToDb(rule.deadlineTime),
-      });
-    }
-
-    // ---- apply (version-checked in the same transaction) ----
-    const updated = await claimVersion(tx, ctx, seriesId, expectedVersion, ["ACTIVE", "PAUSED", "ENDED"], seriesData);
-    if (has("categoryId")) await tx.recurringSeries.update({ where: { id: seriesId }, data: seriesRelationData });
-
-    if (touchesTemplate) {
-      const templateData: Prisma.TaskUncheckedUpdateManyInput = {};
-      for (const field of ["title", "description", "importance", "estimatedMinutes", "categoryId"] as const) if (has(field)) Object.assign(templateData, { [field]: data[field] });
-      await tx.task.updateMany({ where: { seriesId, userId: ctx.userId, status: { not: "COMPLETED" } }, data: templateData });
-    }
-    if (instanceUpdate) await tx.task.update({ where: { id: options.fromInstanceId, userId: ctx.userId }, data: instanceUpdate });
-    return toSeriesView((await loadSeries(tx, ctx.userId, updated.id))!);
-  });
+export async function updateTaskAndSeries(ctx: ServiceContext, taskId: string, expectedVersion: number, patch: SeriesPatch, dates: InstanceDates | null): Promise<Result<SeriesView>> {
+  return runTx((tx) => updateTaskAndSeriesInTx(tx, ctx, taskId, expectedVersion, patch, dates));
 }
 
 // ---------------------------------------------------------------------------

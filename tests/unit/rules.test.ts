@@ -294,3 +294,19 @@ describe("occurrence keys", () => {
     expect(compareOccurrenceKeys("2026-11-09T09:00", "2026-11-09T09:00")).toBe(0);
   });
 });
+
+describe("a date-only occurrence in a timed series (after switching to timed)", () => {
+  it("counts as the END of its day: the next timed occurrence is never on the same day", () => {
+    const rule = daily("2026-11-02", { plannedTime: "09:00" });
+    const oldDateOnly = parseOccurrenceKey("2026-11-09");
+    expect(referencePoint(rule, oldDateOnly, { date: "2026-11-05", time: "07:00" })).toEqual(at("2026-11-09", "23:59"));
+    expect(nextOccurrenceAfter(rule, referencePoint(rule, oldDateOnly, { date: "2026-11-05", time: "07:00" }))?.key).toBe("2026-11-10T09:00");
+    const weekly = weekly_("2026-11-02", { plannedTime: "09:00" });
+    expect(nextOccurrenceAfter(weekly, referencePoint(weekly, oldDateOnly, { date: "2026-11-05", time: "07:00" }))?.key).toBe("2026-11-16T09:00");
+  });
+  it("a timed occurrence in a date-only series uses only its date", () => {
+    const rule = daily("2026-11-02");
+    expect(nextOccurrenceAfter(rule, referencePoint(rule, parseOccurrenceKey("2026-11-09T18:00"), { date: "2026-11-05", time: "07:00" }))?.key).toBe("2026-11-10");
+  });
+});
+const weekly_ = weekly;

@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Task } from "@/generated/prisma/client";
 import type { TaskCategory } from "@/lib/category-rules";
+import type { SeriesState } from "@/lib/recurrence/types";
 import { prisma } from "@/lib/db";
 import { dateFromDb, timeFromDb } from "@/lib/local-time";
 import { logRecurrenceError } from "@/lib/recurrence/log";
@@ -28,12 +29,18 @@ export type TaskView = {
   completedAt: string | null;
   // Only ever one of the owner's own categories.
   category: TaskCategory | null;
+  // The series this task belongs to, if it repeats.
+  seriesId: string | null;
+  repeat: { state: SeriesState } | null;
 };
 
 // The task row together with its category, as loaded by the queries below.
-type TaskWithCategory = Task & { category: TaskCategory | null };
+type TaskWithCategory = Task & { category: TaskCategory | null; series: { state: SeriesState } | null };
 
-const withCategory = { category: { select: { id: true, name: true, color: true } } } as const;
+const withCategory = {
+  category: { select: { id: true, name: true, color: true } },
+  series: { select: { state: true } },
+} as const;
 
 export function toTaskView(task: TaskWithCategory): TaskView {
   return {
@@ -53,6 +60,8 @@ export function toTaskView(task: TaskWithCategory): TaskView {
     updatedAt: task.updatedAt.toISOString(),
     completedAt: task.completedAt?.toISOString() ?? null,
     category: task.category,
+    seriesId: task.seriesId,
+    repeat: task.series ? { state: task.series.state } : null,
   };
 }
 

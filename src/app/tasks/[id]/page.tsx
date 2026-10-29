@@ -6,9 +6,12 @@ import { Suspense } from "react";
 
 import { AppHeader } from "@/components/app-header";
 import { CategoryChip } from "@/components/category-chip";
+import { RepeatBadge } from "@/components/repeat-badge";
+import { SeriesPanel } from "@/components/series-panel";
 import { ImportanceBadge, StatusBadge, TimingBadges } from "@/components/task-badges";
 import { TaskEditor } from "@/components/task-editor";
-import { formatInstant, formatLocalDate, nowInTimeZone } from "@/lib/local-time";
+import { formatInstant, formatLocalDate, formatLocalDateTime, nowInTimeZone } from "@/lib/local-time";
+import { getSeries, getSeriesForecast } from "@/lib/recurrence/service";
 import { getMyCategories, getMyCategory } from "@/lib/categories";
 import { requireUser } from "@/lib/session";
 import { getMyTask } from "@/lib/tasks";
@@ -33,6 +36,9 @@ async function TaskDetails({ params, searchParams }: Pick<PageProps<"/tasks/[id]
   if (!task) notFound();
 
   const now = nowInTimeZone(user.timeZone);
+  // The series (if this task repeats) and the next task that will be created.
+  const series = task.seriesId ? await getSeries({ userId: user.id }, task.seriesId) : null;
+  const nextOccurrence = series ? ((await getSeriesForecast({ userId: user.id }, series.id, { limit: 1 })) ?? [])[0] : undefined;
   const categories = (await getMyCategories()).map(({ id, name, color }) => ({ id, name, color }));
 
   // "?category=<id>" means the task was opened from that category's filtered
@@ -56,6 +62,7 @@ async function TaskDetails({ params, searchParams }: Pick<PageProps<"/tasks/[id]
           <StatusBadge status={task.status} />
           <ImportanceBadge importance={task.importance} />
           <TimingBadges task={task} now={now} />
+          {task.repeat && <RepeatBadge state={task.repeat.state} />}
           {task.category && <CategoryChip category={task.category} />}
         </div>
 
@@ -63,7 +70,10 @@ async function TaskDetails({ params, searchParams }: Pick<PageProps<"/tasks/[id]
           task={task}
           categories={categories}
           returnCategoryId={returnCategory?.id}
+          series={series}
           details={
+            <>
+            {series && <SeriesPanel series={series} next={nextOccurrence ? formatLocalDateTime(nextOccurrence.date, nextOccurrence.time) : null} />}
             <dl className="mt-6 grid grid-cols-1 gap-x-6 gap-y-2 rounded-xl border bg-card p-4 text-sm shadow-xs sm:grid-cols-2">
               <Detail label="Created" value={formatInstant(task.createdAt, user.timeZone)} />
               <Detail label="Last updated" value={formatInstant(task.updatedAt, user.timeZone)} />
@@ -80,6 +90,7 @@ async function TaskDetails({ params, searchParams }: Pick<PageProps<"/tasks/[id]
                 value={`${task.rescheduleCount} ${task.rescheduleCount === 1 ? "time" : "times"}`}
               />
             </dl>
+            </>
           }
         />
       </main>

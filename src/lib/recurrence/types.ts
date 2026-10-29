@@ -65,3 +65,16 @@ export type SeriesView = {
 };
 
 export type InstanceRef = { id: string; occurrenceKey: string };
+
+// The fields of a task that a series is built from (what the task form saves).
+export type NewTaskFields = {
+  title: string;
+  description: string | null;
+  importance: Importance;
+  categoryId: string | null;
+  estimatedMinutes: number | null;
+  plannedDate: LocalDate | null;
+  plannedTime: LocalTime | null;
+  deadlineDate: LocalDate | null;
+  deadlineTime: LocalTime | null;
+};

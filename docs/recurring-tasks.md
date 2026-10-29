@@ -1,4 +1,4 @@
-# Recurring tasks: design notes (Stage 4.3.1)
+# Recurring tasks: design notes (Stages 4.3.1 and 4.3.2)
 
 Backend only. There is no recurring-task UI yet. Code: `src/lib/recurrence/`.
 Tests: `tests/unit` (pure) and `tests/integration` (real PostgreSQL, separate test database).
@@ -38,13 +38,33 @@ One transaction per operation, a per-series advisory lock, a conditional "claim"
 (`unique(seriesId, occurrenceKey)`, `unique(predecessorId)`, composite same-user key, CHECKs).
 Series edits are version-checked (typed `CONFLICT` result with `currentVersion`).
 
+## Stage 4.3.2: user interface and edit behaviour
+
+- **Add Task** has a "Repeat" section. One click creates the task and its series in a single
+  transaction (`createRecurringTask`); any failure rolls back both. Repeating needs a planned date.
+- **Time of day** is the task's planned time (empty = date-only). A series can switch between
+  date-only and timed in both directions in the backend (`updateSeries` / `updateTaskAndSeries`),
+  not only in the UI. A date-only occurrence inside a timed series counts as 23:59 of its day when the
+  next occurrence is computed, so a switch never creates a second occurrence on the same day. A task
+  that keeps an older time can still be followed by a later occurrence on the same day with the new time.
+- **Edit scope** (tasks that repeat):
+  - *Only this task* saves this task row only. The repeat settings are locked, the series template and
+    all other tasks are untouched. Moving only the planned date is a postponement of this task, not a rule change.
+  - *This and future tasks* uses the version-checked series update. Only **changed** fields are sent,
+    so individual edits made earlier to other unfinished tasks are not overwritten. The deadline rule
+    changes only if a deadline field was changed.
+  - Repeat -> Never needs *This and future tasks*: the series is stopped (terminal), this task becomes
+    ordinary and keeps its predecessor link. An ordinary task set to repeat is converted in the same
+    transaction as its edit.
+  - Completed tasks (and stopped series) are read-only for repeat settings; no scope choice is shown.
+  - The form remounts when the series version changes; stale saves return a friendly "changed elsewhere" message.
+- The task page shows a series panel (summary, next task, pause/resume, end date). No separate page,
+  calendar or reminders.
+
 ## Deferred
 
-- **Stage 4.3.2 (UI)**: recurring-task forms, Server Actions around the service, series page,
-  forecast/calendar view, and **adding, changing and removing the recurrence time of day**.
-  Until then a series cannot switch between date-only and timed
-  (`updateSeries` returns `TIME_MODE_CHANGE_NOT_SUPPORTED`); changing the time inside a timed series works.
-  This is a temporary limit of Stage 4.3.1, not a product requirement.
+- **Calendar/forecast view** of future occurrences.
+
 - **Stage 4.5 (trash/archive)**: deleting one instance or a whole series. `stopSeries` is the
   non-destructive building block. Soft-deleted instances must keep reserving their occurrence key, and
   deleting the tail instance must advance or end the series (decision needed then).

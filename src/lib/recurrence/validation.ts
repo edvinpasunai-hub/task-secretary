@@ -40,6 +40,8 @@ export const seriesPatchSchema = z
     plannedTime: localTime.nullable().optional(),
     deadlineOffsetDays: z.number().int().min(-MAX_DEADLINE_OFFSET_DAYS).max(MAX_DEADLINE_OFFSET_DAYS).nullable().optional(),
     deadlineTime: localTime.nullable().optional(),
+    // last date an occurrence may fall on (inclusive); null removes the end date
+    endDate: localDate.nullable().optional(),
   })
   .strict();
 export type SeriesPatch = z.input<typeof seriesPatchSchema>;

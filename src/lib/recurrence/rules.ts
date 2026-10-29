@@ -175,14 +175,18 @@ export function validateRule(rule: RuleConfig): RuleIssue[] {
 // - late completion: "now" wins, so missed occurrences are skipped, never queued;
 // - early completion: the occurrence wins, so the series always moves forward
 //   and the same occurrence can never be produced again.
+// A date-only occurrence (an instance created before the series got a time of
+// day) covers its whole day, so for a timed series it counts as the END of that
+// day: the next timed occurrence is never on the same day.
 export function referencePoint(rule: RuleConfig, completed: Occurrence | null, now: LocalNow, timeZone: string = RECURRENCE_TIME_ZONE): Point {
   const nowPoint: Point = { date: now.date, time: now.time };
   if (!completed) return rule.plannedTime === null ? { date: now.date, time: null } : nowPoint;
   if (rule.plannedTime === null) return { date: completed.date > now.date ? completed.date : now.date, time: null };
 
-  const completedInstant = wallClockToInstant(completed.date, completed.time ?? "00:00", timeZone);
+  const completedTime = completed.time ?? "23:59";
+  const completedInstant = wallClockToInstant(completed.date, completedTime, timeZone);
   const nowInstant = wallClockToInstant(now.date, now.time, timeZone);
-  return completedInstant > nowInstant ? { date: completed.date, time: completed.time ?? "00:00" } : nowPoint;
+  return completedInstant > nowInstant ? { date: completed.date, time: completedTime } : nowPoint;
 }
 
 // The first scheduled occurrence strictly after `reference`, or null when the

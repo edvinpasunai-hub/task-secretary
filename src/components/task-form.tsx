@@ -17,7 +17,18 @@ import { createCategory } from "@/app/categories/actions";
 import type { TaskFormState } from "@/app/tasks/actions";
 import { CategoryChip } from "@/components/category-chip";
 import { CategoryDialog } from "@/components/category-dialog";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { RepeatFields } from "@/components/repeat-fields";
 import type { TaskStatus } from "@/generated/prisma/enums";
+import type { SeriesView } from "@/lib/recurrence/types";
 import { suggestCategoryColor, type TaskCategory } from "@/lib/category-rules";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +48,8 @@ type TaskFormProps = {
   // The category filter the task was opened from: Cancel returns to it, and
   // the server returns to it after saving (after checking it is the user's).
   returnCategoryId?: string;
+  // The series this task belongs to, when it repeats.
+  series?: SeriesView | null;
 };
 
 // Lets the status buttons on the task page work together with the edit form.
@@ -61,7 +74,9 @@ export function TaskForm({ ref, ...props }: TaskFormProps & { ref?: Ref<TaskForm
     saveWithStatus: (status) => fields.current?.saveWithStatus(status),
     discardChanges: () => setResetKey((key) => key + 1),
   }));
-  return <TaskFormFields ref={fields} key={`${props.task?.updatedAt ?? "new"}-${resetKey}`} {...props} />;
+  // A change to the series (for example paused from the Repeat panel) reloads the form
+  // with the current repeat settings, so a stale value can never be saved back.
+  return <TaskFormFields ref={fields} key={`${props.task?.updatedAt ?? "new"}-${props.series?.version ?? 0}-${resetKey}`} {...props} />;
 }
 
 // The form's current values, in a form that can be compared with ===.
@@ -72,7 +87,7 @@ function durationParts(minutes: number | null | undefined) {
   return { hours: String(Math.floor(minutes / 60)), minutes: String(minutes % 60) };
 }
 
-function TaskFormFields({ action, task, submitLabel, categories, returnCategoryId, ref }: TaskFormProps & { ref: Ref<FieldsHandle> }) {
+function TaskFormFields({ action, task, submitLabel, categories, returnCategoryId, series = null, ref }: TaskFormProps & { ref: Ref<FieldsHandle> }) {
   const [state, formAction, pending] = useActionState(action, {});
   const formRef = useRef<HTMLFormElement>(null);
   const savedValues = useRef<string | null>(null);
@@ -88,7 +103,7 @@ function TaskFormFields({ action, task, submitLabel, categories, returnCategoryI
       if (!formRef.current) return;
       const formData = new FormData(formRef.current);
       formData.set("status", status);
-      formAction(formData);
+      submit(formData);
     },
   }));
 
@@ -132,10 +147,22 @@ function TaskFormFields({ action, task, submitLabel, categories, returnCategoryI
 
   // Submit without React's automatic form reset, so typed values stay visible
   // when the server reports a validation error.
+  // Turning "Repeat" to Never for the whole series stops it for good, so it is
+  // confirmed first. The form data waits here until the user decides.
+  const [confirmStop, setConfirmStop] = useState<FormData | null>(null);
+  function submit(formData: FormData) {
+    const stopsSeries = series !== null && formData.get("scope") === "SERIES" && formData.get("repeatType") === "NEVER";
+    if (stopsSeries) setConfirmStop(formData);
+    else startTransition(() => formAction(formData));
+  }
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    startTransition(() => formAction(formData));
+    submit(new FormData(event.currentTarget));
+  }
+  function confirmStopSeries() {
+    const formData = confirmStop;
+    setConfirmStop(null);
+    if (formData) startTransition(() => formAction(formData));
   }
 
   const error = (field: TaskFormField) =>
@@ -286,6 +313,8 @@ function TaskFormFields({ action, task, submitLabel, categories, returnCategoryI
         </p>
       )}
 
+      <RepeatFields series={series} taskCompleted={task?.status === "COMPLETED"} plannedDate={timing.plannedDate} repeatState={state.repeat} errors={state.errors} />
+
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-2 text-sm font-medium">
           Estimated duration <span className="font-normal text-muted-foreground">(optional)</span>
@@ -338,6 +367,26 @@ function TaskFormFields({ action, task, submitLabel, categories, returnCategoryI
           {pending ? "Saving…" : submitLabel}
         </Button>
       </div>
+
+      <AlertDialog open={confirmStop !== null} onOpenChange={(open) => !open && setConfirmStop(null)}>
+        <AlertDialogContent className="data-[size=default]:sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Stop repeating this task?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently stops the series. It cannot be resumed or restarted, and no new tasks will be created. The tasks that already exist
+              stay, and this one becomes an ordinary task. To only take a break, choose “Pause repeating” instead.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel size="lg" className="h-10">
+              Keep repeating
+            </AlertDialogCancel>
+            <Button variant="destructive" size="lg" className="h-10" onClick={confirmStopSeries} data-confirm-stop>
+              Stop repeating for good
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </form>
   );
 }

@@ -2,6 +2,7 @@ import { Check, RotateCcw } from "lucide-react";
 import Link from "next/link";
 
 import { CategoryChip } from "@/components/category-chip";
+import { RepeatBadge } from "@/components/repeat-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { ImportanceBadge, StatusBadge, TimingBadges } from "@/components/task-badges";
 import { setTaskStatus } from "@/app/tasks/actions";
@@ -49,6 +50,7 @@ export function TaskCard({ task, now, timeZone, categoryFilterId }: { task: Task
           <StatusBadge status={task.status} />
           <ImportanceBadge importance={task.importance} />
           <TimingBadges task={task} now={now} />
+          {task.repeat && <RepeatBadge state={task.repeat.state} />}
           {task.category && <CategoryChip category={task.category} />}
         </div>
 

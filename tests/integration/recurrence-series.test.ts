@@ -396,17 +396,6 @@ describe("editing the whole series (this and future tasks)", () => {
     expect((await complete(userId, task.id, "2026-11-02", "09:00")).successor?.occurrenceKey).toBe("2026-11-03T10:00");
   });
 
-  it("switching between date-only and timed is not supported in this stage (planned for Stage 4.3.2) and changes nothing", async () => {
-    const timed = await makeRecurring(userId, { type: "DAILY", plannedTime: "09:00" });
-    const toDateOnly = await updateSeries(ctx("2026-11-02"), timed.seriesId, 1, { plannedTime: null }, { fromInstanceId: timed.task.id });
-    expect(toDateOnly).toMatchObject({ ok: false, error: { code: "VALIDATION", issues: [{ code: "TIME_MODE_CHANGE_NOT_SUPPORTED" }] } });
-    const dateOnly = await makeRecurring(userId, { type: "DAILY" });
-    const toTimed = await updateSeries(ctx("2026-11-02"), dateOnly.seriesId, 1, { plannedTime: "09:00" }, { fromInstanceId: dateOnly.task.id });
-    expect(toTimed).toMatchObject({ ok: false, error: { code: "VALIDATION" } });
-    expect([(await view(timed.seriesId)).version, (await view(timed.seriesId)).plannedTime]).toEqual([1, "09:00"]);
-    expect([(await view(dateOnly.seriesId)).version, (await view(dateOnly.seriesId)).plannedTime]).toEqual([1, null]);
-  });
-
   it("refuses a change that would give two instances the same occurrence, and rolls everything back", async () => {
     const { task: a, seriesId } = await makeRecurring(userId, { type: "WEEKLY" });
     await complete(userId, a.id, "2026-11-02"); // creates 9 Nov
