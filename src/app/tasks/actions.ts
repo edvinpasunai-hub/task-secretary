@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { categoryIdSchema } from "@/lib/category-validation";
 import { prisma } from "@/lib/db";
 import { dateFromDb, dateToDb, timeToDb } from "@/lib/local-time";
+import { completeTask, completeTaskInTx } from "@/lib/recurrence/service";
 import { requireUser } from "@/lib/session";
 import { applyDeadlineChange, completedAtFor } from "@/lib/task-rules";
 import {
@@ -112,6 +113,10 @@ export async function updateTask(_state: TaskFormState, formData: FormData): Pro
     if (!(await ownsCategory(user.id, parsed.data.categoryId))) {
       return { errors: { categoryId: CATEGORY_INVALID }, values: parsed.values, message: notSaved };
     }
+    // Repeating tasks are anchored to their planned date, so it cannot be removed.
+    if (current.seriesId && parsed.data.plannedDate === null) {
+      return { errors: { plannedDate: "A repeating task needs a planned date." }, values: parsed.values, message: notSaved };
+    }
 
     const deadline = applyDeadlineChange(
       {
@@ -121,15 +126,24 @@ export async function updateTask(_state: TaskFormState, formData: FormData): Pro
       },
       parsed.data.deadlineDate,
     );
-    await prisma.task.update({
-      where: { id: current.id, userId: user.id },
-      data: {
-        ...taskColumns(parsed.data),
-        originalDeadlineDate: dateToDb(deadline.originalDeadlineDate),
-        rescheduleCount: deadline.rescheduleCount,
-        ...(status && { status: status.data, completedAt: completedAtFor(current, status.data, new Date()) }),
-      },
-    });
+    const fields = {
+      ...taskColumns(parsed.data),
+      originalDeadlineDate: dateToDb(deadline.originalDeadlineDate),
+      rescheduleCount: deadline.rescheduleCount,
+    };
+    if (current.seriesId && status?.data === "COMPLETED") {
+      // Completing a repeating task also creates its next instance: the edits, the
+      // completion and the new instance are saved together or not at all.
+      await prisma.$transaction(async (tx) => {
+        await tx.task.update({ where: { id: current.id, userId: user.id }, data: fields });
+        await completeTaskInTx(tx, { userId: user.id }, current.id);
+      });
+    } else {
+      await prisma.task.update({
+        where: { id: current.id, userId: user.id },
+        data: { ...fields, ...(status && { status: status.data, completedAt: completedAtFor(current, status.data, new Date()) }) },
+      });
+    }
   } catch (error) {
     if (isMissingCategory(error)) return { errors: { categoryId: CATEGORY_INVALID }, values: parsed.values, message: notSaved };
     return { message: SAVE_FAILED };
@@ -149,13 +163,21 @@ export async function setTaskStatus(formData: FormData): Promise<void> {
 
   const current = await prisma.task.findFirst({
     where: { id: id.data, userId: user.id },
-    select: { id: true, status: true, completedAt: true },
+    select: { id: true, status: true, completedAt: true, seriesId: true },
   });
   if (!current) return;
 
-  await prisma.task.update({
-    where: { id: current.id, userId: user.id },
-    data: { status: status.data, completedAt: completedAtFor(current, status.data, new Date()) },
-  });
+  if (current.seriesId && status.data === "COMPLETED") {
+    // A repeating task also creates its next instance; the recurrence service does
+    // both in one transaction and is safe to call twice.
+    const result = await completeTask({ userId: user.id }, current.id);
+    if (!result.ok && result.error.code !== "NOT_FOUND") throw new Error(result.error.message);
+  } else {
+    // Everything else, including "undo complete" of a repeating task, is a plain status change.
+    await prisma.task.update({
+      where: { id: current.id, userId: user.id },
+      data: { status: status.data, completedAt: completedAtFor(current, status.data, new Date()) },
+    });
+  }
   refresh();
 }

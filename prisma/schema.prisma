@@ -25,11 +25,12 @@ model User {
   // IANA time zone used to interpret the user's task dates and times.
   timeZone      String   @default("Europe/Tallinn")
 
-  sessions   Session[]
-  accounts   Account[]
-  tasks      Task[]
-  categories Category[]
-  reminders  Reminder[]
+  sessions        Session[]
+  accounts        Account[]
+  tasks           Task[]
+  categories      Category[]
+  recurringSeries RecurringSeries[]
+  reminders       Reminder[]
 
   @@map("users")
 }
@@ -134,8 +135,23 @@ model Task {
   categoryId           String?
   category             Category?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
+  // Recurring tasks. A task belongs to no series or to exactly one series of the
+  // same user (the composite key makes the database enforce "same user").
+  seriesId      String?
+  series        RecurringSeries? @relation(fields: [seriesId, userId], references: [id, userId], onDelete: NoAction)
+  // The scheduled occurrence this task stands for: "2026-11-09" or
+  // "2026-11-09T09:00". It does not change when the planned date is postponed.
+  occurrenceKey String?
+  // The instance whose completion created this one. Unique, so one instance can
+  // never have two successors.
+  predecessorId String?          @unique
+  predecessor   Task?            @relation("TaskSuccession", fields: [predecessorId], references: [id], onDelete: SetNull)
+  successor     Task?            @relation("TaskSuccession")
+
   reminders Reminder[]
 
+  // The same occurrence of a series can never exist twice.
+  @@unique([seriesId, occurrenceKey])
   @@index([userId, status, deadlineDate])
   @@index([categoryId])
   @@map("tasks")
@@ -165,11 +181,80 @@ model Category {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  tasks Task[]
+  tasks           Task[]
+  recurringSeries RecurringSeries[]
 
   // Category names are unique per user, ignoring upper/lower case.
   @@unique([userId, normalizedName])
   @@map("categories")
+}
+
+enum RecurrenceType {
+  DAILY
+  WEEKLY
+  MONTHLY
+  CUSTOM_WEEKDAYS
+}
+
+// ACTIVE: creates the next instance when the latest one is completed.
+// PAUSED: creates nothing until resumed (indefinitely, or until pausedUntil).
+// ENDED: the end date has been reached; reversible by extending the end date.
+// STOPPED: recurrence was turned off; final.
+enum SeriesState {
+  ACTIVE
+  PAUSED
+  ENDED
+  STOPPED
+}
+
+// A recurring series: its schedule and the template new instances are copied
+// from. Independent of the individual tasks (instances) it produced.
+// Dates are wall-clock values in Europe/Tallinn (see src/lib/recurrence).
+model RecurringSeries {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Schedule. weekdays are ISO numbers (1 = Monday … 7 = Sunday): exactly one for
+  // WEEKLY, one or more for CUSTOM_WEEKDAYS, none otherwise.
+  type        RecurrenceType
+  weekdays    Int[]
+  // The ORIGINAL day of the month (1-31); shorter months use their last day.
+  monthlyDay  Int?
+  // Planned date of the first instance; recurrence is anchored to planned dates.
+  anchorDate  DateTime       @db.Date
+  // null = date-only series.
+  plannedTime DateTime?      @db.Time(0)
+
+  // Template copied into every new instance.
+  title              String     @db.VarChar(200)
+  description        String?
+  importance         Importance @default(NORMAL)
+  estimatedMinutes   Int?
+  // Deleting the category keeps the series and clears this field.
+  categoryId         String?
+  category           Category?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  // Deadline = planned date + this many calendar days, at deadlineTime.
+  // null offset = no deadline.
+  deadlineOffsetDays Int?
+  deadlineTime       DateTime?  @db.Time(0)
+
+  // Last date an occurrence may fall on (inclusive); null = no end.
+  endDate     DateTime?   @db.Date
+  state       SeriesState @default(ACTIVE)
+  pausedUntil DateTime?   @db.Date
+  // Increases with every change; edits made from a stale copy are rejected.
+  version     Int         @default(1)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  tasks Task[]
+
+  // Lets tasks reference (id, userId), so a task can only belong to its owner's series.
+  @@unique([id, userId])
+  @@index([userId, state, pausedUntil])
+  @@index([categoryId])
+  @@map("recurring_series")
 }
 
 enum ReminderType {

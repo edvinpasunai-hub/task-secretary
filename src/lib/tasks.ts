@@ -4,6 +4,8 @@ import type { Task } from "@/generated/prisma/client";
 import type { TaskCategory } from "@/lib/category-rules";
 import { prisma } from "@/lib/db";
 import { dateFromDb, timeFromDb } from "@/lib/local-time";
+import { logRecurrenceError } from "@/lib/recurrence/log";
+import { reconcileExpiredPauses } from "@/lib/recurrence/service";
 import { requireUser } from "@/lib/session";
 import { taskIdSchema } from "@/lib/task-validation";
 
@@ -62,6 +64,14 @@ export function toTaskView(task: TaskWithCategory): TaskView {
 // owner filter always applies too, so another user's id can never match.
 export async function getMyTasks(categoryId?: string): Promise<TaskView[]> {
   const user = await requireUser();
+  // Repeating series whose "paused until" date has come are resumed here (there is
+  // no background job). A cheap read when nothing is due. The list must still load
+  // if this fails, but the failure is logged and the check simply runs again next time.
+  try {
+    await reconcileExpiredPauses({ userId: user.id });
+  } catch (error) {
+    logRecurrenceError("recurrence.reconcile_check_failed", { userId: user.id }, error);
+  }
   const tasks = await prisma.task.findMany({
     where: { userId: user.id, ...(categoryId && { categoryId }) },
     include: withCategory,
