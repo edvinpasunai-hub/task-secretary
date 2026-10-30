@@ -1,15 +1,13 @@
-import { Plus } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { AddTaskLink } from "@/components/add-task-link";
 import { AppNav } from "@/components/app-nav";
 import { NotificationBell, NotificationBellFallback } from "@/components/notification-bell";
 import { LogoutButton } from "@/components/logout-button";
 import { SecretaryAvatar } from "@/components/secretary-avatar";
-import { buttonVariants } from "@/components/ui/button";
 import type { CurrentUser } from "@/lib/session";
 
-// Temporary Stage 4 header. Stage 5 replaces it with the dashboard navigation.
 export function AppHeader({ user }: { user: CurrentUser }) {
   return (
     <header className="border-b bg-card">
@@ -19,10 +17,7 @@ export function AppHeader({ user }: { user: CurrentUser }) {
           <span className="truncate">Task Secretary</span>
         </Link>
         <span className="ml-auto hidden truncate text-sm text-muted-foreground sm:inline">{user.email}</span>
-        <Link href="/tasks/new" className={buttonVariants({ size: "lg", className: "ml-auto sm:ml-0" })}>
-          <Plus aria-hidden />
-          Add task
-        </Link>
+        <AddTaskLink />
         <Suspense fallback={<NotificationBellFallback />}>
           <NotificationBell user={user} />
         </Suspense>

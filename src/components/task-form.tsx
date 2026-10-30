@@ -10,6 +10,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type Ref,
 } from "react";
 
@@ -29,6 +30,7 @@ import {
 import { RepeatFields } from "@/components/repeat-fields";
 import type { TaskStatus } from "@/generated/prisma/enums";
 import type { SeriesView } from "@/lib/recurrence/types";
+import { returnHref, TASKS_FALLBACK, type ReturnTarget } from "@/lib/return-path";
 import { suggestCategoryColor, type TaskCategory } from "@/lib/category-rules";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,9 +47,9 @@ type TaskFormProps = {
   submitLabel: string;
   // The logged-in user's own categories, for the category field.
   categories: TaskCategory[];
-  // The category filter the task was opened from: Cancel returns to it, and
-  // the server returns to it after saving (after checking it is the user's).
-  returnCategoryId?: string;
+  // The page the task was opened from (dashboard, or the Tasks list with its filters): Cancel returns
+  // to it, and the server returns to it after saving (re-checking it; only safe local paths exist).
+  returnTarget?: ReturnTarget;
   // The series this task belongs to, when it repeats.
   series?: SeriesView | null;
 };
@@ -87,8 +89,15 @@ function durationParts(minutes: number | null | undefined) {
   return { hours: String(Math.floor(minutes / 60)), minutes: String(minutes % 60) };
 }
 
-function TaskFormFields({ action, task, submitLabel, categories, returnCategoryId, series = null, ref }: TaskFormProps & { ref: Ref<FieldsHandle> }) {
+function TaskFormFields({ action, task, submitLabel, categories, returnTarget = TASKS_FALLBACK, series = null, ref }: TaskFormProps & { ref: Ref<FieldsHandle> }) {
   const [state, formAction, pending] = useActionState(action, {});
+  // False in the server-rendered HTML and until this page's scripts have taken over, true afterwards.
+  // The form cannot be submitted before that (see the comment on <form>).
+  const ready = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
   const formRef = useRef<HTMLFormElement>(null);
   const savedValues = useRef<string | null>(null);
 
@@ -175,9 +184,18 @@ function TaskFormFields({ action, task, submitLabel, categories, returnCategoryI
     state.errors?.[field] ? { "aria-invalid": true, "aria-describedby": `${field}-error` } : {};
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
+    // Task content (title, description, dates) must NEVER end up in a URL. A <form> without a method is
+    // submitted with GET, which puts every field into the address bar, the history, server logs and Referer
+    // headers. That would happen if the form were submitted before this page's scripts have taken over (a
+    // fast click or Enter on a slow load) or with scripts off or blocked. So: the form is POST (the values
+    // stay in the request body), the Save button stays disabled until the scripts are running (this also
+    // stops Enter, because a form whose default button is disabled is not submitted), and src/proxy.ts
+    // redirects a request that carries task content in the query string to the clean address.
+    <form ref={formRef} method="post" onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
       {task && <input type="hidden" name="id" value={task.id} />}
-      {returnCategoryId && <input type="hidden" name="returnCategory" value={returnCategoryId} />}
+      {returnTarget.from === "dashboard" && <input type="hidden" name="returnFrom" value="dashboard" />}
+      {returnTarget.category && <input type="hidden" name="returnCategory" value={returnTarget.category} />}
+      {returnTarget.due && <input type="hidden" name="returnDue" value={returnTarget.due} />}
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="title">Title</Label>
@@ -359,13 +377,16 @@ function TaskFormFields({ action, task, submitLabel, categories, returnCategoryI
       )}
 
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Link href={returnCategoryId ? `/?category=${returnCategoryId}` : "/"} className={buttonVariants({ variant: "outline", size: "lg", className: "h-10" })}>
+        <Link href={returnHref(returnTarget)} className={buttonVariants({ variant: "outline", size: "lg", className: "h-10" })}>
           Cancel
         </Link>
-        <Button type="submit" size="lg" className="h-10" disabled={pending}>
+        <Button type="submit" size="lg" className="h-10" disabled={!ready || pending}>
           {pending && <LoaderCircle className="animate-spin" aria-hidden />}
           {pending ? "Saving…" : submitLabel}
         </Button>
+        <noscript>
+          <p className="text-sm text-muted-foreground">Please turn on JavaScript to save tasks.</p>
+        </noscript>
       </div>
 
       <AlertDialog open={confirmStop !== null} onOpenChange={(open) => !open && setConfirmStop(null)}>

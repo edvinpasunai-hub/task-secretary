@@ -73,7 +73,7 @@ function CategoryDialogForm({ onOpenChange, title, description, submitLabel, ini
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="grid gap-4">
+    <form method="post" onSubmit={handleSubmit} noValidate className="grid gap-4">
       <DialogHeader>
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>{description}</DialogDescription>

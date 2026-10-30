@@ -32,7 +32,7 @@ type Scope = "TASK" | "SERIES";
 // - Only this task: that occurrence is skipped and the series carries on;
 // - This and future tasks: the series is stopped for good (explicit confirmation) and every
 //   unfinished task of it goes to Trash. Finished tasks stay.
-export function TaskRemoval({ taskId, completed, archived, series }: { taskId: string; completed: boolean; archived: boolean; series: SeriesView | null }) {
+export function TaskRemoval({ taskId, completed, archived, series, returnHref }: { taskId: string; completed: boolean; archived: boolean; series: SeriesView | null; returnHref: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
@@ -59,7 +59,7 @@ export function TaskRemoval({ taskId, completed, archived, series }: { taskId: s
       () => (stopsSeries && series ? moveSeriesToTrashAction({ taskId, version: series.version }) : moveToTrashAction({ taskId })),
       () => {
         setOpen(false);
-        router.push("/");
+        router.push(returnHref); // built on the server from validated values: always a local path
       },
     );
   }

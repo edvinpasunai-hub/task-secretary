@@ -1,5 +1,6 @@
 import { Check, RotateCcw } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { CategoryChip } from "@/components/category-chip";
 import { RepeatBadge } from "@/components/repeat-badge";
@@ -11,9 +12,10 @@ import { formatDuration } from "@/lib/task-rules";
 import type { TaskView } from "@/lib/tasks";
 import { cn } from "@/lib/utils";
 
-// categoryFilterId: the category the list is filtered by, if any, so that
-// opening the task and coming back keeps the filter.
-export function TaskCard({ task, now, timeZone, categoryFilterId }: { task: TaskView; now: LocalNow; timeZone: string; categoryFilterId?: string }) {
+// returnQuery: where this card is shown (see src/lib/return-path.ts: "from=dashboard", or the Tasks
+// list's filters), so opening the task and coming back returns to the same page.
+// extraActions: anything the page adds next to the card's own controls (the dashboard's Postpone menu).
+export function TaskCard({ task, now, timeZone, returnQuery = "", extraActions }: { task: TaskView; now: LocalNow; timeZone: string; returnQuery?: string; extraActions?: ReactNode }) {
   const completed = task.status === "COMPLETED";
 
   return (
@@ -40,7 +42,7 @@ export function TaskCard({ task, now, timeZone, categoryFilterId }: { task: Task
 
       <div className="min-w-0 flex-1">
         <Link
-          href={categoryFilterId ? `/tasks/${task.id}?category=${categoryFilterId}` : `/tasks/${task.id}`}
+          href={returnQuery ? `/tasks/${task.id}?${returnQuery}` : `/tasks/${task.id}`}
           className={cn("font-medium break-words hover:underline", completed && "text-muted-foreground line-through")}
         >
           {task.title}
@@ -80,6 +82,8 @@ export function TaskCard({ task, now, timeZone, categoryFilterId }: { task: Task
             </div>
           )}
         </dl>
+
+        {extraActions && <div className="mt-3 flex flex-wrap gap-2">{extraActions}</div>}
       </div>
     </li>
   );

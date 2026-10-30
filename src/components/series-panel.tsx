@@ -79,6 +79,7 @@ export function SeriesPanel({ series, next }: { series: SeriesView; next: string
 
       {mode === "pause" && (
         <form
+          method="post"
           className="mt-3 flex flex-col gap-2 rounded-lg bg-muted/50 p-3"
           onSubmit={(event) => {
             event.preventDefault();
@@ -100,6 +101,7 @@ export function SeriesPanel({ series, next }: { series: SeriesView; next: string
 
       {mode === "end" && (
         <form
+          method="post"
           className="mt-3 flex flex-col gap-2 rounded-lg bg-muted/50 p-3"
           onSubmit={(event) => {
             event.preventDefault();

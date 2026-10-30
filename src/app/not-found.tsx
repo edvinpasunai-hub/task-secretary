@@ -9,7 +9,7 @@ export default function NotFound() {
       <SecretaryAvatar />
       <h1 className="mt-4 text-xl font-semibold">Sorry, Boss, I couldn’t find that.</h1>
       <p className="mt-1 text-muted-foreground">The page or task does not exist, or it is not yours.</p>
-      <Link href="/" className={buttonVariants({ size: "lg", className: "mt-6" })}>
+      <Link href="/tasks" className={buttonVariants({ size: "lg", className: "mt-6" })}>
         Back to my tasks
       </Link>
     </main>

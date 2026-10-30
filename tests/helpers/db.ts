@@ -50,6 +50,8 @@ type TaskOptions = {
   estimatedMinutes?: number | null;
   categoryId?: string | null;
   rescheduleCount?: number;
+  completedAt?: Date | null;
+  createdAt?: Date;
 };
 
 export async function createTask(userId: string, o: TaskOptions = {}) {
@@ -69,7 +71,8 @@ export async function createTask(userId: string, o: TaskOptions = {}) {
       estimatedMinutes: o.estimatedMinutes ?? null,
       categoryId: o.categoryId ?? null,
       rescheduleCount: o.rescheduleCount ?? 0,
-      completedAt: o.status === "COMPLETED" ? new Date("2026-10-01T10:00:00Z") : null,
+      completedAt: o.completedAt !== undefined ? o.completedAt : o.status === "COMPLETED" ? new Date("2026-10-01T10:00:00Z") : null,
+      ...(o.createdAt ? { createdAt: o.createdAt } : {}),
     },
   });
 }

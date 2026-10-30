@@ -3,17 +3,18 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import type { DueSection } from "@/lib/dashboard/sections";
 import { CATEGORY_COLOR_STYLES, type TaskCategory } from "@/lib/category-rules";
 import { cn } from "@/lib/utils";
 
 const MISSING = "__missing";
 
 // Chooses which category the task list shows. Changing it navigates to
-// "/?category=<id>" (or "/" for all tasks), so the filter lives in the URL:
+// "/tasks?category=<id>" (or "/tasks" for all tasks), so the filter lives in the URL:
 // it survives a refresh and works with the browser's Back and Forward buttons.
 // Remounted by the page whenever the URL's category changes, so it always
 // shows what the URL says.
-export function CategoryFilter({ categories, current, missing }: { categories: TaskCategory[]; current: string; missing: boolean }) {
+export function CategoryFilter({ categories, current, missing, due = null }: { categories: TaskCategory[]; current: string; missing: boolean; due?: DueSection | null }) {
   const router = useRouter();
   const [selected, setSelected] = useState(missing ? MISSING : current);
   const [pending, startTransition] = useTransition();
@@ -22,7 +23,9 @@ export function CategoryFilter({ categories, current, missing }: { categories: T
   function handleChange(event: React.ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value;
     setSelected(value);
-    startTransition(() => router.push(value === "" ? "/" : `/?category=${value}`));
+    // The due filter (if any) is kept; only the category changes.
+    const query = [value !== "" && `category=${value}`, due && `due=${due}`].filter(Boolean).join("&");
+    startTransition(() => router.push(query ? `/tasks?${query}` : "/tasks"));
   }
 
   return (

@@ -13,7 +13,10 @@ import { TaskEditor } from "@/components/task-editor";
 import { TaskRemoval } from "@/components/task-removal";
 import { formatInstant, formatLocalDate, formatLocalDateTime, nowInTimeZone } from "@/lib/local-time";
 import { getSeries, getSeriesForecast } from "@/lib/recurrence/service";
-import { getMyCategories, getMyCategory } from "@/lib/categories";
+import { getMyCategories } from "@/lib/categories";
+import { DUE_LABELS } from "@/lib/dashboard/sections";
+import { parseReturnFromSearch, returnHref } from "@/lib/return-path";
+import { resolveReturn } from "@/lib/return-target";
 import { requireUser } from "@/lib/session";
 import { getMyTask } from "@/lib/tasks";
 
@@ -42,12 +45,20 @@ async function TaskDetails({ params, searchParams }: Pick<PageProps<"/tasks/[id]
   const nextOccurrence = series ? ((await getSeriesForecast({ userId: user.id }, series.id, { limit: 1 })) ?? [])[0] : undefined;
   const categories = (await getMyCategories()).map(({ id, name, color }) => ({ id, name, color }));
 
-  // "?category=<id>" means the task was opened from that category's filtered
-  // list. It is only used if it is one of the user's own categories; anything
-  // else (deleted, unknown, someone else's, not an id) is ignored.
-  const requested = (await searchParams).category;
-  const returnCategory = typeof requested === "string" && requested !== "" ? await getMyCategory(requested) : null;
-  const backHref = returnCategory ? `/?category=${returnCategory.id}` : "/";
+  // Where the task was opened from: "?from=dashboard", or the Tasks list with its filters
+  // ("?category=<id>&due=<section>"). Only these few validated values are read, the link is built
+  // here (never taken from the URL), and a category must be one of the user's own; anything else
+  // falls back to the plain Tasks list.
+  const { target: returnTarget, categoryName } = await resolveReturn(user.id, parseReturnFromSearch(await searchParams));
+  const backHref = returnHref(returnTarget);
+  const backLabel =
+    returnTarget.from === "dashboard"
+      ? "Dashboard"
+      : returnTarget.category && categoryName
+        ? `Tasks in “${categoryName}”`
+        : returnTarget.due
+          ? `${DUE_LABELS[returnTarget.due]} tasks`
+          : "All tasks";
 
   return (
     <>
@@ -55,7 +66,7 @@ async function TaskDetails({ params, searchParams }: Pick<PageProps<"/tasks/[id]
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-6">
         <Link href={backHref} className="inline-flex max-w-full items-center gap-1 text-sm text-muted-foreground hover:text-foreground" data-back-link>
           <ArrowLeft className="size-4 shrink-0" aria-hidden />
-          <span className="truncate">{returnCategory ? `Tasks in “${returnCategory.name}”` : "All tasks"}</span>
+          <span className="truncate">{backLabel}</span>
         </Link>
 
         <h1 className="mt-3 text-xl font-semibold break-words">{task.title}</h1>
@@ -85,7 +96,7 @@ async function TaskDetails({ params, searchParams }: Pick<PageProps<"/tasks/[id]
         <TaskEditor
           task={task}
           categories={categories}
-          returnCategoryId={returnCategory?.id}
+          returnTarget={returnTarget}
           series={series}
           details={
             <>
@@ -110,7 +121,7 @@ async function TaskDetails({ params, searchParams }: Pick<PageProps<"/tasks/[id]
           }
         />
         )}
-        <TaskRemoval taskId={task.id} completed={task.status === "COMPLETED"} archived={task.archivedAt !== null} series={series} />
+        <TaskRemoval taskId={task.id} completed={task.status === "COMPLETED"} archived={task.archivedAt !== null} series={series} returnHref={backHref} />
       </main>
     </>
   );

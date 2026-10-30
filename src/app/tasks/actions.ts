@@ -3,7 +3,6 @@
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { categoryIdSchema } from "@/lib/category-validation";
 import { prisma } from "@/lib/db";
 import { dateFromDb, dateToDb, timeFromDb, timeToDb } from "@/lib/local-time";
 import { buildSeriesPatch, issueFieldErrors, parseRepeatForm, recurrenceMessage, type ParsedRepeat, type RepeatField, type RepeatFormValues } from "@/lib/recurrence/form";
@@ -17,6 +16,8 @@ import {
   updateTaskAndSeriesInTx,
 } from "@/lib/recurrence/service";
 import type { RecurrenceError, Result } from "@/lib/recurrence/types";
+import { returnHref } from "@/lib/return-path";
+import { returnTargetFromForm } from "@/lib/return-target";
 import { requireUser } from "@/lib/session";
 import { applyDeadlineChange, completedAtFor } from "@/lib/task-rules";
 import { ACTIVE_TASK } from "@/lib/task-state";
@@ -68,13 +69,12 @@ async function ownsCategory(userId: string, categoryId: string | null) {
   return (await prisma.category.count({ where: { id: categoryId, userId } })) === 1;
 }
 
-// Where to go after saving an edit. The browser only sends a category id; the
-// path is built here, and only if that id is one of the user's own categories.
-// Anything else (an URL, a deleted or someone else's category) goes to the plain list.
-async function returnPath(userId: string, raw: FormDataEntryValue | null) {
-  const id = categoryIdSchema.safeParse(raw);
-  if (!id.success || !(await ownsCategory(userId, id.data))) return "/";
-  return `/?category=${id.data}`;
+// Where to go after saving. The browser only sends short values (dashboard / a due filter / a category
+// id), never a URL; the path is BUILT here from validated pieces, and a category id is kept only if it is
+// one of the user's own categories. Anything else (an URL, junk, a deleted or someone else's category)
+// goes to the plain Tasks list.
+async function returnPath(userId: string, formData: FormData) {
+  return returnHref(await returnTargetFromForm(userId, formData));
 }
 
 // The category was deleted between the check and the save.
@@ -124,7 +124,7 @@ export async function createTask(_state: TaskFormState, formData: FormData): Pro
     if (isMissingCategory(error)) return { errors: { categoryId: CATEGORY_INVALID }, values: parsed.values, repeat: repeat.values };
     return { message: SAVE_FAILED, values: parsed.values, repeat: repeat.values };
   }
-  redirect("/");
+  redirect(await returnPath(user.id, formData));
 }
 
 // Saves the edit form. When the form also sends a "status" (the "Save changes
@@ -248,7 +248,7 @@ export async function updateTask(_state: TaskFormState, formData: FormData): Pro
     refresh();
     return {};
   }
-  redirect(await returnPath(user.id, formData.get("returnCategory")));
+  redirect(await returnPath(user.id, formData));
 }
 
 export async function setTaskStatus(formData: FormData): Promise<void> {

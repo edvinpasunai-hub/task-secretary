@@ -21,12 +21,13 @@ import { STATUS_LABELS, TASK_STATUSES } from "@/lib/task-rules";
 import type { TaskView } from "@/lib/tasks";
 import type { TaskCategory } from "@/lib/category-rules";
 import type { SeriesView } from "@/lib/recurrence/types";
+import type { ReturnTarget } from "@/lib/return-path";
 import { cn } from "@/lib/utils";
 
 // The task page's status buttons and edit form. Switching status is immediate,
 // unless the form has unsaved changes: then the user chooses to save them,
 // discard them, or keep editing.
-export function TaskEditor({ task, details, categories, returnCategoryId, series = null }: { task: TaskView; details: ReactNode; categories: TaskCategory[]; returnCategoryId?: string; series?: SeriesView | null }) {
+export function TaskEditor({ task, details, categories, returnTarget, series = null }: { task: TaskView; details: ReactNode; categories: TaskCategory[]; returnTarget?: ReturnTarget; series?: SeriesView | null }) {
   const form = useRef<TaskFormHandle>(null);
   const [pending, startTransition] = useTransition();
   const [requestedStatus, setRequestedStatus] = useState<TaskStatus | null>(null);
@@ -98,7 +99,7 @@ export function TaskEditor({ task, details, categories, returnCategoryId, series
           Edit task
         </h2>
         <div className="rounded-xl border bg-card p-4 shadow-xs sm:p-6">
-          <TaskForm ref={form} action={updateTask} task={task} submitLabel="Save changes" categories={categories} returnCategoryId={returnCategoryId} series={series} />
+          <TaskForm ref={form} action={updateTask} task={task} submitLabel="Save changes" categories={categories} returnTarget={returnTarget} series={series} />
         </div>
       </section>
 

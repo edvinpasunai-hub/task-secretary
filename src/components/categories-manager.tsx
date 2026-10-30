@@ -72,7 +72,7 @@ export function CategoriesManager({ categories }: { categories: CategoryView[] }
 
   return (
     <>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="flex items-center gap-2 text-lg font-semibold">
           <Tags className="size-5 text-primary" aria-hidden />
           Categories <span className="font-normal text-muted-foreground">({categories.length})</span>
@@ -95,7 +95,7 @@ export function CategoriesManager({ categories }: { categories: CategoryView[] }
             <li key={category.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border bg-card p-4 shadow-xs" data-category-row={category.name}>
               {/* Clicking the name or count shows this category's tasks; Edit and Delete sit outside the link. */}
               <Link
-                href={`/?category=${category.id}`}
+                href={`/tasks?category=${category.id}`}
                 title={`Show tasks in ${category.name}`}
                 className="group flex min-w-0 flex-1 basis-48 flex-col items-start gap-1 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
               >

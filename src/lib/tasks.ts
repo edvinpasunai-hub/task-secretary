@@ -4,7 +4,8 @@ import type { Task } from "@/generated/prisma/client";
 import type { TaskCategory } from "@/lib/category-rules";
 import type { SeriesState } from "@/lib/recurrence/types";
 import { prisma } from "@/lib/db";
-import { dateFromDb, timeFromDb } from "@/lib/local-time";
+import { partitionByDue, type DueSection } from "@/lib/dashboard/sections";
+import { dateFromDb, nowInTimeZone, timeFromDb } from "@/lib/local-time";
 import { logRecurrenceError } from "@/lib/recurrence/log";
 import { reconcileExpiredPauses } from "@/lib/recurrence/service";
 import { reconcileReminders } from "@/lib/reminders/service";
@@ -74,33 +75,38 @@ export function toTaskView(task: TaskWithCategory): TaskView {
 // Each function resolves the logged-in user itself, so callers cannot ask for
 // another user's tasks.
 
+// What has to be brought up to date when the user opens a page that lists tasks. There is no
+// background job: these run when the app is used. Each step may fail without stopping the page;
+// the failure is logged and the step simply runs again next time.
+// - Repeating series whose "paused until" date has come are resumed.
+// - Reminders that have become due are created.
+// - Trash older than 30 days is deleted for good (expired tasks are hidden and cannot be restored anyway).
+export async function runListMaintenance(userId: string): Promise<void> {
+  try {
+    await reconcileExpiredPauses({ userId });
+  } catch (error) {
+    logRecurrenceError("recurrence.reconcile_check_failed", { userId }, error);
+  }
+  try {
+    await reconcileReminders({ userId });
+  } catch (error) {
+    logRecurrenceError("reminders.reconcile_failed", { userId }, error);
+  }
+  try {
+    await purgeExpiredTrash({ userId });
+  } catch (error) {
+    logRecurrenceError("trash.purge_failed", { userId }, error);
+  }
+}
+
 // Most important first, then the earliest deadline (tasks without one last).
 // With a category id, only that category's tasks (of every status). The
 // owner filter always applies too, so another user's id can never match.
-export async function getMyTasks(categoryId?: string): Promise<TaskView[]> {
+// With a due filter, only the unfinished tasks of that dashboard section, in the dashboard's order
+// (the same rules as the dashboard, so "View all" matches what it counted).
+export async function getMyTasks(categoryId?: string, due?: DueSection): Promise<TaskView[]> {
   const user = await requireUser();
-  // Repeating series whose "paused until" date has come are resumed here (there is
-  // no background job). A cheap read when nothing is due. The list must still load
-  // if this fails, but the failure is logged and the check simply runs again next time.
-  try {
-    await reconcileExpiredPauses({ userId: user.id });
-  } catch (error) {
-    logRecurrenceError("recurrence.reconcile_check_failed", { userId: user.id }, error);
-  }
-  // Reminders that have become due are created here too (no background job); a failure
-  // is logged and never stops the list.
-  try {
-    await reconcileReminders({ userId: user.id });
-  } catch (error) {
-    logRecurrenceError("reminders.reconcile_failed", { userId: user.id }, error);
-  }
-  // Trash older than 30 days is deleted for good when the user uses the app; a failure is
-  // logged and never stops the list (expired tasks are hidden and cannot be restored anyway).
-  try {
-    await purgeExpiredTrash({ userId: user.id });
-  } catch (error) {
-    logRecurrenceError("trash.purge_failed", { userId: user.id }, error);
-  }
+  await runListMaintenance(user.id);
   const tasks = await prisma.task.findMany({
     where: { userId: user.id, ...ACTIVE_TASK, ...(categoryId && { categoryId }) },
     include: withCategory,
@@ -111,7 +117,8 @@ export async function getMyTasks(categoryId?: string): Promise<TaskView[]> {
       { createdAt: "asc" },
     ],
   });
-  return tasks.map(toTaskView);
+  const views = tasks.map(toTaskView);
+  return due ? partitionByDue(views, nowInTimeZone(user.timeZone))[due] : views;
 }
 
 // Returns null both for unknown ids and for other users' tasks, so nobody can
