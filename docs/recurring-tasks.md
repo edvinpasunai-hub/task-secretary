@@ -5,7 +5,7 @@ Tests: `tests/unit` (pure) and `tests/integration` (real PostgreSQL, separate te
 
 ## Model
 
-- `RecurringSeries` holds the schedule and the **template** (title, description, importance,
+- `RecurringSeries` holds the schedule and the **template** (title, description, priority,
   duration, category, deadline rule). It is independent of its tasks.
 - A task (instance) has `seriesId`, `occurrenceKey` (the scheduled occurrence, e.g. `2026-11-09`
   or `2026-11-09T09:00`, never changed by postponing) and `predecessorId` (the instance whose

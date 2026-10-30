@@ -30,7 +30,7 @@ export const seriesPatchSchema = z
     // template
     title: z.string().trim().min(1, "Please enter a title.").max(200).optional(),
     description: z.string().trim().max(5000).transform((value) => value || null).nullable().optional(),
-    importance: z.enum(["HIGH", "NORMAL", "LOW"]).optional(),
+    priority: z.enum(["HIGH", "MEDIUM", "LOW"]).optional(),
     estimatedMinutes: z.number().int().min(1).max(MAX_ESTIMATED_MINUTES).nullable().optional(),
     categoryId: categoryIdSchema.nullable().optional(),
     // schedule (needs the instance being edited)
@@ -46,7 +46,7 @@ export const seriesPatchSchema = z
   .strict();
 export type SeriesPatch = z.input<typeof seriesPatchSchema>;
 
-export const TEMPLATE_FIELDS = ["title", "description", "importance", "estimatedMinutes", "categoryId"] as const;
+export const TEMPLATE_FIELDS = ["title", "description", "priority", "estimatedMinutes", "categoryId"] as const;
 export const SCHEDULE_FIELDS = ["type", "weekdays", "monthlyDay", "plannedTime", "deadlineOffsetDays", "deadlineTime"] as const;
 
 export const pauseUntilSchema = localDate.nullable().optional();

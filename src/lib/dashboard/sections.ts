@@ -10,7 +10,7 @@
 //   none      no deadline
 // Completed tasks belong to no section. Every unfinished task belongs to exactly one.
 
-import type { Importance, TaskStatus } from "@/generated/prisma/enums";
+import type { Priority, TaskStatus } from "@/generated/prisma/enums";
 import type { LocalDate, LocalNow, LocalTime } from "@/lib/local-time";
 import { addDays } from "@/lib/recurrence/civil-date";
 import { isOverdue } from "@/lib/task-rules";
@@ -42,9 +42,9 @@ export function classifyTask(task: ClassifiableTask, now: LocalNow): DueSection 
   return "later";
 }
 
-export type SortableTask = ClassifiableTask & { id: string; importance: Importance; createdAt: string };
+export type SortableTask = ClassifiableTask & { id: string; priority: Priority; createdAt: string };
 
-const IMPORTANCE_RANK: Record<Importance, number> = { HIGH: 0, NORMAL: 1, LOW: 2 };
+const PRIORITY_RANK: Record<Priority, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
 // A date-only deadline lasts until the end of its day, so it sorts after timed deadlines of that day.
 const dueKey = (task: ClassifiableTask) => `${task.deadlineDate}T${task.deadlineTime ?? "23:59"}`;
 const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -57,7 +57,7 @@ export function compareInSection(section: DueSection) {
       const due = byText(dueKey(a), dueKey(b));
       if (due !== 0) return due;
     }
-    return IMPORTANCE_RANK[a.importance] - IMPORTANCE_RANK[b.importance] || byText(a.createdAt, b.createdAt) || byText(a.id, b.id);
+    return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || byText(a.createdAt, b.createdAt) || byText(a.id, b.id);
   };
 }
 

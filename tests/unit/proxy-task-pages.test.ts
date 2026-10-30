@@ -16,7 +16,7 @@ const where = (response: Response) => new URL(response.headers.get("location") ?
 
 describe("task pages never keep task content in the URL", () => {
   it("a native GET submission of the add-task form is redirected to the clean address", () => {
-    const query = `?title=${DUMMY_TITLE}&description=secret+notes&categoryId=&importance=NORMAL&plannedDate=2026-11-10&deadlineDate=&repeatType=NEVER&durationHours=&durationMinutes=`;
+    const query = `?title=${DUMMY_TITLE}&description=secret+notes&categoryId=&priority=MEDIUM&plannedDate=2026-11-10&deadlineDate=&repeatType=NEVER&durationHours=&durationMinutes=`;
     const response = proxy(req(`/tasks/new${query}`));
     expect(response.status).toBe(303);
     expect(where(response).pathname).toBe("/tasks/new");

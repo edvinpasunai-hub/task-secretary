@@ -36,7 +36,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { IMPORTANCE_LABELS, IMPORTANCE_LEVELS, isPlannedAfterDeadline } from "@/lib/task-rules";
+import { PRIORITY_LABELS, PRIORITY_LEVELS, isPlannedAfterDeadline } from "@/lib/task-rules";
 import type { TaskFormField } from "@/lib/task-validation";
 import type { TaskView } from "@/lib/tasks";
 import { cn } from "@/lib/utils";
@@ -277,25 +277,25 @@ function TaskFormFields({ action, task, submitLabel, categories, returnTarget = 
       />
 
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-2 text-sm font-medium">Importance</legend>
+        <legend className="mb-2 text-sm font-medium">Priority</legend>
         <div className="grid grid-cols-3 gap-2">
-          {IMPORTANCE_LEVELS.map((level) => (
+          {PRIORITY_LEVELS.map((level) => (
             <label
               key={level}
               className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border text-sm has-checked:border-primary has-checked:bg-primary/10 has-checked:font-medium has-checked:text-primary has-focus-visible:ring-3 has-focus-visible:ring-ring/50"
             >
               <input
                 type="radio"
-                name="importance"
+                name="priority"
                 value={level}
-                defaultChecked={value("importance", task?.importance ?? "NORMAL") === level}
+                defaultChecked={value("priority", task?.priority ?? "MEDIUM") === level}
                 className="sr-only"
               />
-              {IMPORTANCE_LABELS[level]}
+              {PRIORITY_LABELS[level]}
             </label>
           ))}
         </div>
-        {error("importance")}
+        {error("priority")}
       </fieldset>
 
       <DateTimeField

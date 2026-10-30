@@ -118,7 +118,7 @@ export function recurrenceMessage(error: RecurrenceError): string {
 export type FormFields = {
   title: string;
   description: string | null;
-  importance: "HIGH" | "NORMAL" | "LOW";
+  priority: "HIGH" | "MEDIUM" | "LOW";
   estimatedMinutes: number | null;
   categoryId: string | null;
   plannedDate: LocalDate;
@@ -135,7 +135,7 @@ export function buildSeriesPatch(form: FormFields, task: TaskAsLoaded, series: P
   // template: only what this form changed
   if (form.title !== task.title) patch.title = form.title;
   if (form.description !== task.description) patch.description = form.description;
-  if (form.importance !== task.importance) patch.importance = form.importance;
+  if (form.priority !== task.priority) patch.priority = form.priority;
   if (form.estimatedMinutes !== task.estimatedMinutes) patch.estimatedMinutes = form.estimatedMinutes;
   if (form.categoryId !== task.categoryId) patch.categoryId = form.categoryId;
 

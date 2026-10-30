@@ -19,7 +19,7 @@ export type TaskView = {
   id: string;
   title: string;
   description: string | null;
-  importance: Task["importance"];
+  priority: Task["priority"];
   status: Task["status"];
   plannedDate: string | null;
   plannedTime: string | null;
@@ -53,7 +53,7 @@ export function toTaskView(task: TaskWithCategory): TaskView {
     id: task.id,
     title: task.title,
     description: task.description,
-    importance: task.importance,
+    priority: task.priority,
     status: task.status,
     plannedDate: dateFromDb(task.plannedDate),
     plannedTime: timeFromDb(task.plannedTime),
@@ -111,7 +111,7 @@ export async function getMyTasks(categoryId?: string, due?: DueSection): Promise
     where: { userId: user.id, ...ACTIVE_TASK, ...(categoryId && { categoryId }) },
     include: withCategory,
     orderBy: [
-      { importance: "asc" },
+      { priority: "asc" },
       { deadlineDate: { sort: "asc", nulls: "last" } },
       { deadlineTime: { sort: "asc", nulls: "last" } },
       { createdAt: "asc" },

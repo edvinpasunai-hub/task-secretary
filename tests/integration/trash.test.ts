@@ -495,7 +495,7 @@ describe("recurring tasks: permanent deletion never recreates an occurrence", ()
     expect(tomb).toMatchObject({
       title: "",
       description: null,
-      importance: "NORMAL",
+      priority: "MEDIUM",
       status: "COMPLETED",
       plannedDate: null,
       plannedTime: null,

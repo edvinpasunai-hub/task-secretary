@@ -32,7 +32,7 @@ afterAll(() => prisma.$disconnect());
 
 const form = (fields: Record<string, string>) => {
   const data = new FormData();
-  for (const [key, value] of Object.entries({ importance: "NORMAL", repeatType: "NEVER", ...fields })) data.set(key, value);
+  for (const [key, value] of Object.entries({ priority: "MEDIUM", repeatType: "NEVER", ...fields })) data.set(key, value);
   return data;
 };
 // Runs an action; a redirect (the success path of the forms) is returned as `redirectedTo`.
@@ -56,17 +56,17 @@ const row = (id: string) => prisma.task.findUniqueOrThrow({ where: { id } });
 const count = (userId = me) => prisma.task.count({ where: { userId } });
 
 describe("creating a task", () => {
-  it("a minimal task: normal importance, To do, no dates or estimate, owned by the logged-in user", async () => {
+  it("a minimal task: normal priority, To do, no dates or estimate, owned by the logged-in user", async () => {
     const { redirectedTo } = await create({ title: "Minimal" });
     expect(redirectedTo).toBe("/tasks");
     const task = await prisma.task.findFirstOrThrow({ where: { userId: me } });
-    expect(task).toMatchObject({ title: "Minimal", importance: "NORMAL", status: "TODO", plannedDate: null, deadlineDate: null, estimatedMinutes: null, completedAt: null, rescheduleCount: 0, originalDeadlineDate: null, seriesId: null });
+    expect(task).toMatchObject({ title: "Minimal", priority: "MEDIUM", status: "TODO", plannedDate: null, deadlineDate: null, estimatedMinutes: null, completedAt: null, rescheduleCount: 0, originalDeadlineDate: null, seriesId: null });
   });
 
   it("a full task stores every field; a deadline with a time is stored as date + time; the first deadline is remembered", async () => {
-    await create({ title: "Full", description: "Notes", importance: "HIGH", plannedDate: "2026-11-12", plannedTime: "09:30", deadlineDate: "2026-11-10", deadlineTime: "17:00", durationHours: "1", durationMinutes: "30" });
+    await create({ title: "Full", description: "Notes", priority: "HIGH", plannedDate: "2026-11-12", plannedTime: "09:30", deadlineDate: "2026-11-10", deadlineTime: "17:00", durationHours: "1", durationMinutes: "30" });
     const task = await prisma.task.findFirstOrThrow({ where: { userId: me } });
-    expect([task.title, task.description, task.importance, dateFromDb(task.plannedDate), timeFromDb(task.plannedTime), dateFromDb(task.deadlineDate), timeFromDb(task.deadlineTime), task.estimatedMinutes]).toEqual(["Full", "Notes", "HIGH", "2026-11-12", "09:30", "2026-11-10", "17:00", 90]);
+    expect([task.title, task.description, task.priority, dateFromDb(task.plannedDate), timeFromDb(task.plannedTime), dateFromDb(task.deadlineDate), timeFromDb(task.deadlineTime), task.estimatedMinutes]).toEqual(["Full", "Notes", "HIGH", "2026-11-12", "09:30", "2026-11-10", "17:00", 90]);
     expect(dateFromDb(task.originalDeadlineDate)).toBe("2026-11-10");
     expect(task.rescheduleCount).toBe(0);
   });
@@ -78,9 +78,9 @@ describe("creating a task", () => {
     expect(await count()).toBe(0);
   });
 
-  it("tampered importance and an impossible date are refused, and nothing is saved", async () => {
-    const urgent = await create({ title: "T", importance: "URGENT" });
-    expect(urgent.state && "errors" in urgent.state && urgent.state.errors?.importance).toBeTruthy();
+  it("tampered priority and an impossible date are refused, and nothing is saved", async () => {
+    const urgent = await create({ title: "T", priority: "URGENT" });
+    expect(urgent.state && "errors" in urgent.state && urgent.state.errors?.priority).toBeTruthy();
     const impossible = await create({ title: "T", deadlineDate: "2026-02-30" });
     expect(impossible.state && "errors" in impossible.state && impossible.state.errors?.deadlineDate).toBeTruthy();
     expect(await count()).toBe(0);

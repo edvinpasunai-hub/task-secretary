@@ -135,7 +135,7 @@ export function toSeriesView(series: RecurringSeries): SeriesView {
     plannedTime: timeFromDb(series.plannedTime),
     title: series.title,
     description: series.description,
-    importance: series.importance,
+    priority: series.priority,
     estimatedMinutes: series.estimatedMinutes,
     categoryId: series.categoryId,
     deadlineOffsetDays: series.deadlineOffsetDays,
@@ -190,7 +190,7 @@ async function createInstance(tx: Tx, series: RecurringSeries, occurrence: Occur
         predecessorId,
         title: series.title,
         description: series.description,
-        importance: series.importance,
+        priority: series.priority,
         estimatedMinutes: series.estimatedMinutes,
         categoryId: series.categoryId,
         status: "TODO",
@@ -382,7 +382,7 @@ function ruleForTask(
   return rule;
 }
 
-async function insertSeries(tx: Tx, userId: string, rule: RuleConfig, template: Pick<NewTaskFields, "title" | "description" | "importance" | "estimatedMinutes" | "categoryId">) {
+async function insertSeries(tx: Tx, userId: string, rule: RuleConfig, template: Pick<NewTaskFields, "title" | "description" | "priority" | "estimatedMinutes" | "categoryId">) {
   const series = await tx.recurringSeries.create({
     data: {
       userId,
@@ -393,7 +393,7 @@ async function insertSeries(tx: Tx, userId: string, rule: RuleConfig, template: 
       plannedTime: timeToDb(rule.plannedTime),
       title: template.title,
       description: template.description,
-      importance: template.importance,
+      priority: template.priority,
       estimatedMinutes: template.estimatedMinutes,
       categoryId: template.categoryId,
       deadlineOffsetDays: rule.deadlineOffsetDays,
@@ -424,7 +424,7 @@ export async function createRecurringTaskInTx(tx: Tx, ctx: ServiceContext, task:
       occurrenceKey: buildOccurrence(rule.anchorDate, rule.plannedTime).key,
       title: task.title,
       description: task.description,
-      importance: task.importance,
+      priority: task.priority,
       categoryId: task.categoryId,
       estimatedMinutes: task.estimatedMinutes,
       plannedDate: dateToDb(task.plannedDate),
@@ -453,7 +453,7 @@ export async function convertInTx(tx: Tx, ctx: ServiceContext, taskId: string, r
   const fields: NewTaskFields = {
     title: task.title,
     description: task.description,
-    importance: task.importance,
+    priority: task.priority,
     categoryId: task.categoryId,
     estimatedMinutes: task.estimatedMinutes,
     plannedDate: dateFromDb(task.plannedDate),
@@ -622,7 +622,7 @@ function firstOccurrenceOnOrAfter(rule: RuleConfig, date: LocalDate): Occurrence
 }
 
 // Changes the series template, schedule and/or end date.
-// - Template fields (title, description, importance, duration, category) are copied
+// - Template fields (title, description, priority, duration, category) are copied
 //   to every UNFINISHED instance; completed history is never touched.
 // - Schedule fields (type, weekdays, monthly day, time of day, deadline rule) need
 //   `fromInstanceId`, the instance being edited: only that instance is
@@ -673,7 +673,7 @@ async function updateSeriesInTx(tx: Tx, ctx: ServiceContext, seriesId: string, e
   if (has("categoryId") && data.categoryId) await assertOwnCategory(tx, ctx.userId, data.categoryId);
 
   const seriesData: Prisma.RecurringSeriesUpdateManyMutationInput = {};
-  for (const field of ["title", "description", "importance", "estimatedMinutes"] as const) if (has(field)) Object.assign(seriesData, { [field]: data[field] });
+  for (const field of ["title", "description", "priority", "estimatedMinutes"] as const) if (has(field)) Object.assign(seriesData, { [field]: data[field] });
 
   let rule: RuleConfig = seriesToRule(series);
   let instanceUpdate: Prisma.TaskUncheckedUpdateInput | null = null;

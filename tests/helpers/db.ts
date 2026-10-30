@@ -3,7 +3,7 @@
 
 import { randomBytes } from "node:crypto";
 
-import type { Importance, TaskStatus } from "@/generated/prisma/enums";
+import type { Priority, TaskStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
 import { dateToDb, timeToDb } from "@/lib/local-time";
 import { RECURRENCE_TIME_ZONE } from "@/lib/recurrence/rules";
@@ -41,7 +41,7 @@ export async function createCategory(userId: string, name = "Cat", color: "TEAL"
 type TaskOptions = {
   title?: string;
   status?: TaskStatus;
-  importance?: Importance;
+  priority?: Priority;
   description?: string | null;
   plannedDate?: string | null;
   plannedTime?: string | null;
@@ -62,7 +62,7 @@ export async function createTask(userId: string, o: TaskOptions = {}) {
       title: o.title ?? "Task",
       description: o.description ?? null,
       status: o.status ?? "TODO",
-      importance: o.importance ?? "NORMAL",
+      priority: o.priority ?? "MEDIUM",
       plannedDate: dateToDb(o.plannedDate ?? null),
       plannedTime: timeToDb(o.plannedTime ?? null),
       deadlineDate: dateToDb(o.deadlineDate ?? null),

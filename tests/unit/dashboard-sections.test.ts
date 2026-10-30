@@ -7,7 +7,7 @@ const now = { date: "2026-11-10", time: "14:30" }; // a Tuesday afternoon
 const task = (deadlineDate: string | null, deadlineTime: string | null = null, o: Partial<SortableTask> = {}): SortableTask => ({
   id: "t1",
   status: "TODO",
-  importance: "NORMAL",
+  priority: "MEDIUM",
   createdAt: "2026-11-01T10:00:00.000Z",
   deadlineDate,
   deadlineTime,
@@ -92,27 +92,27 @@ describe("partitionByDue", () => {
     expect(sections.overdue.map((t) => t.id)).toEqual(["a", "b", "c"]);
   });
 
-  it("sorts today by time (timed first, date-only last), then importance", () => {
+  it("sorts today by time (timed first, date-only last), then priority", () => {
     const sections = partitionByDue(
       [
         task("2026-11-10", null, { id: "dateOnly" }),
         task("2026-11-10", "18:00", { id: "evening" }),
-        task("2026-11-10", "15:00", { id: "afternoonLow", importance: "LOW" }),
-        task("2026-11-10", "15:00", { id: "afternoonHigh", importance: "HIGH" }),
+        task("2026-11-10", "15:00", { id: "afternoonLow", priority: "LOW" }),
+        task("2026-11-10", "15:00", { id: "afternoonHigh", priority: "HIGH" }),
       ],
       now,
     );
     expect(sections.today.map((t) => t.id)).toEqual(["afternoonHigh", "afternoonLow", "evening", "dateOnly"]);
   });
 
-  it("sorts upcoming by date, and no-due-date by importance then age", () => {
+  it("sorts upcoming by date, and no-due-date by priority then age", () => {
     const sections = partitionByDue(
       [
         task("2026-11-15", null, { id: "late" }),
         task("2026-11-12", null, { id: "early" }),
         task(null, null, { id: "oldNormal", createdAt: "2026-10-01T00:00:00.000Z" }),
         task(null, null, { id: "newNormal", createdAt: "2026-11-01T00:00:00.000Z" }),
-        task(null, null, { id: "high", importance: "HIGH", createdAt: "2026-11-05T00:00:00.000Z" }),
+        task(null, null, { id: "high", priority: "HIGH", createdAt: "2026-11-05T00:00:00.000Z" }),
       ],
       now,
     );

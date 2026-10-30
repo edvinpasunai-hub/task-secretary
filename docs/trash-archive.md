@@ -49,7 +49,7 @@ updates. The database constraints stay the backstop: `unique(seriesId, occurrenc
   simply deleted, the previous task would become the tail and a future date could be generated again. So that one row
   is kept as a **tombstone**: scrubbed of everything except
   `id`, `userId`, `seriesId`, `occurrenceKey` (a date) and technical timestamps (`createdAt`, `updatedAt`, `deletedAt`,
-  `purgedAt`), with `status = COMPLETED`, `importance = NORMAL`, `rescheduleCount = 0` and an empty title (the schema
+  `purgedAt`), with `status = COMPLETED`, `priority = MEDIUM`, `rescheduleCount = 0` and an empty title (the schema
   requires a value). Title, description, category, all dates and deadlines, estimate, completion time, predecessor link
   and its reminders are removed. A tombstone is never listed, searched, restored, archived or shown by reminders (it is
   always "deleted"), and an old tombstone is dropped once a later instance exists. A stopped series generates nothing,

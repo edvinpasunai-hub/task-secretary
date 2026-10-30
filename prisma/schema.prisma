@@ -88,11 +88,12 @@ model Verification {
 // Task Secretary tables
 // ---------------------------------------------------------------------------
 
-// Declared from most to least important: PostgreSQL sorts enum values in
-// declaration order, so sorting by importance ascending puts HIGH first.
-enum Importance {
+// The user-set priority of a task (and of a repeating series' template). Declared from highest to
+// lowest: PostgreSQL sorts enum values in declaration order, so sorting by priority ascending puts
+// HIGH first. (Before Stage 6.1 this was "Importance" with NORMAL instead of MEDIUM.)
+enum Priority {
   HIGH
-  NORMAL
+  MEDIUM
   LOW
 }
 
@@ -114,7 +115,7 @@ model Task {
   user                 User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   title                String     @db.VarChar(200)
   description          String?
-  importance           Importance @default(NORMAL)
+  priority             Priority   @default(MEDIUM)
   status               TaskStatus @default(TODO)
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
@@ -240,7 +241,7 @@ model RecurringSeries {
   // Template copied into every new instance.
   title              String     @db.VarChar(200)
   description        String?
-  importance         Importance @default(NORMAL)
+  priority           Priority   @default(MEDIUM)
   estimatedMinutes   Int?
   // Deleting the category keeps the series and clears this field.
   categoryId         String?

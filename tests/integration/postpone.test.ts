@@ -59,7 +59,7 @@ describe("moving the deadline", () => {
   });
 
   it("leaves everything else about the task alone", async () => {
-    const task = await createTask(userId, { title: "Keep", description: "text", deadlineDate: "2026-11-10", plannedDate: "2026-11-10", importance: "HIGH", estimatedMinutes: 30 });
+    const task = await createTask(userId, { title: "Keep", description: "text", deadlineDate: "2026-11-10", plannedDate: "2026-11-10", priority: "HIGH", estimatedMinutes: 30 });
     const before = await row(task.id);
     await run(task.id, "2026-11-12", "2026-11-10");
     const after = await row(task.id);

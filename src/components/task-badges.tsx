@@ -3,7 +3,7 @@ import { AlertTriangle, CalendarClock, CheckCircle2, CircleDashed, Clock, Flag, 
 import { Badge } from "@/components/ui/badge";
 import type { LocalNow } from "@/lib/local-time";
 import {
-  IMPORTANCE_LABELS,
+  PRIORITY_LABELS,
   isOverdue,
   isPlannedAfterDeadline,
   isPlannedTimeMissed,
@@ -32,16 +32,16 @@ export const STATUS_COLORS = {
 
 const warning = "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200";
 
-export function ImportanceBadge({ importance }: { importance: TaskView["importance"] }) {
-  if (importance === "HIGH") {
+export function PriorityBadge({ priority }: { priority: TaskView["priority"] }) {
+  if (priority === "HIGH") {
     return (
       <Badge className="bg-primary/10 text-primary">
         <Flag aria-hidden />
-        High importance
+        High priority
       </Badge>
     );
   }
-  return <Badge variant="outline">{IMPORTANCE_LABELS[importance]} importance</Badge>;
+  return <Badge variant="outline">{PRIORITY_LABELS[priority]} priority</Badge>;
 }
 
 export function StatusBadge({ status }: { status: TaskView["status"] }) {

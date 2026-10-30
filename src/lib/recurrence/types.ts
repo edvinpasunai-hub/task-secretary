@@ -1,4 +1,4 @@
-import type { Importance } from "@/generated/prisma/enums";
+import type { Priority } from "@/generated/prisma/enums";
 import type { LocalDate, LocalTime } from "@/lib/local-time";
 import type { RecurrenceTypeName, RuleIssue } from "@/lib/recurrence/rules";
 
@@ -55,7 +55,7 @@ export type SeriesView = {
   plannedTime: LocalTime | null;
   title: string;
   description: string | null;
-  importance: Importance;
+  priority: Priority;
   estimatedMinutes: number | null;
   categoryId: string | null;
   deadlineOffsetDays: number | null;
@@ -72,7 +72,7 @@ export type InstanceRef = { id: string; occurrenceKey: string };
 export type NewTaskFields = {
   title: string;
   description: string | null;
-  importance: Importance;
+  priority: Priority;
   categoryId: string | null;
   estimatedMinutes: number | null;
   plannedDate: LocalDate | null;

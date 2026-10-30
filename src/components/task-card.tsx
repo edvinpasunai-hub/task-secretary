@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { CategoryChip } from "@/components/category-chip";
 import { RepeatBadge } from "@/components/repeat-badge";
 import { SubmitButton } from "@/components/submit-button";
-import { ImportanceBadge, StatusBadge, TimingBadges } from "@/components/task-badges";
+import { PriorityBadge, StatusBadge, TimingBadges } from "@/components/task-badges";
 import { setTaskStatus } from "@/app/tasks/actions";
 import { formatInstant, formatLocalDateTime, type LocalNow } from "@/lib/local-time";
 import { formatDuration } from "@/lib/task-rules";
@@ -22,7 +22,7 @@ export function TaskCard({ task, now, timeZone, returnQuery = "", extraActions }
     <li
       className={cn(
         "flex gap-3 rounded-xl border bg-card p-4 shadow-xs",
-        task.importance === "HIGH" && !completed && "border-l-4 border-l-primary",
+        task.priority === "HIGH" && !completed && "border-l-4 border-l-primary",
         completed && "bg-card/60",
       )}
     >
@@ -50,7 +50,7 @@ export function TaskCard({ task, now, timeZone, returnQuery = "", extraActions }
 
         <div className="mt-2 flex flex-wrap gap-1.5">
           <StatusBadge status={task.status} />
-          <ImportanceBadge importance={task.importance} />
+          <PriorityBadge priority={task.priority} />
           <TimingBadges task={task} now={now} />
           {task.repeat && <RepeatBadge state={task.repeat.state} />}
           {task.category && <CategoryChip category={task.category} />}

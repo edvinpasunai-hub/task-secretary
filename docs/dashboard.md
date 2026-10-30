@@ -12,7 +12,7 @@ keep their routes. No database change was needed.
   completed today). The counters are full totals, never limited to the five tasks shown.
 - Sections **Overdue**, **Today**, **Upcoming** and **No due date**: at most 5 tasks each, with the full count and
   a "View all" link. A compact **Later (N)** link sits next to Upcoming.
-- The existing task card (status, importance, timing, repeat and category badges), the reminder bell, and an
+- The existing task card (status, priority, timing, repeat and category badges), the reminder bell, and an
   Add task button.
 
 ## One rule for every list
@@ -26,8 +26,8 @@ keep their routes. No database change was needed.
 - **Today**: deadline today, not yet overdue. **Upcoming**: the next 7 calendar days, not today. **Later**: further away.
 - Completed tasks are in no section; every unfinished task is in exactly one.
 - Trashed and archived tasks are excluded everywhere (the shared active-task filter).
-- Sorting: earliest deadline first (a date-only deadline sorts after timed ones of that day), then importance, then
-  age; "No due date" by importance, then age.
+- Sorting: earliest deadline first (a date-only deadline sorts after timed ones of that day), then priority, then
+  age; "No due date" by priority, then age.
 - The user's saved time zone (default Europe/Tallinn) decides "today" and every boundary. Calendar days are added
   with integer date maths, so clock changes cannot shift the 7-day window.
 

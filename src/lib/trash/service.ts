@@ -190,7 +190,7 @@ async function removeInTx(tx: Prisma.TransactionClient, userId: string, taskId: 
       data: {
         title: "",
         description: null,
-        importance: "NORMAL",
+        priority: "MEDIUM",
         status: "COMPLETED",
         plannedDate: null,
         plannedTime: null,

@@ -47,7 +47,7 @@ function taskColumns(input: TaskInput) {
     categoryId: input.categoryId,
     title: input.title,
     description: input.description,
-    importance: input.importance,
+    priority: input.priority,
     plannedDate: dateToDb(input.plannedDate),
     plannedTime: timeToDb(input.plannedTime),
     deadlineDate: dateToDb(input.deadlineDate),
@@ -216,7 +216,7 @@ export async function updateTask(_state: TaskFormState, formData: FormData): Pro
       const patch = buildSeriesPatch(
         { ...data, plannedDate: data.plannedDate! },
         {
-          title: current.title, description: current.description, importance: current.importance, estimatedMinutes: current.estimatedMinutes, categoryId: current.categoryId,
+          title: current.title, description: current.description, priority: current.priority, estimatedMinutes: current.estimatedMinutes, categoryId: current.categoryId,
           plannedDate: dateFromDb(current.plannedDate), plannedTime: timeFromDb(current.plannedTime), deadlineDate: dateFromDb(current.deadlineDate), deadlineTime: timeFromDb(current.deadlineTime),
         },
         { type: series.type, weekdays: series.weekdays, endDate: dateFromDb(series.endDate) },

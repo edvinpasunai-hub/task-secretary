@@ -67,7 +67,7 @@ export function RepeatFields({ series, taskCompleted, plannedDate, repeatState, 
           {(
             [
               ["TASK", "Only this task", "Changes this task only. The repeat settings and all other tasks stay as they are."],
-              ["SERIES", "This and future tasks", "Changes the repeat settings and the shared details (title, description, category, importance, duration) of every unfinished task in the series."],
+              ["SERIES", "This and future tasks", "Changes the repeat settings and the shared details (title, description, category, priority, duration) of every unfinished task in the series."],
             ] as const
           ).map(([value, label, help]) => (
             <label

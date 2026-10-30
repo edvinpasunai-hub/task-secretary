@@ -307,21 +307,21 @@ describe("turning recurrence off", () => {
 describe("editing the whole series (this and future tasks)", () => {
   it("copies template changes to every UNFINISHED instance, never to completed history, and new instances use them", async () => {
     const category = await createCategory(userId, "Work");
-    const { task: a, seriesId } = await makeRecurring(userId, { type: "WEEKLY", title: "Old", description: "old text", importance: "LOW", estimatedMinutes: 30 });
+    const { task: a, seriesId } = await makeRecurring(userId, { type: "WEEKLY", title: "Old", description: "old text", priority: "LOW", estimatedMinutes: 30 });
     const b = (await complete(userId, a.id, "2026-11-02")).successor!;
     const c = (await complete(userId, b.id, "2026-11-09")).successor!;
     await undo(b.id); // b unfinished again: unfinished = b, c
 
-    const updated = okValue(await updateSeries(ctx("2026-11-10"), seriesId, 1, { title: "New", description: "new text", importance: "HIGH", estimatedMinutes: 90, categoryId: category.id }));
-    expect(updated).toMatchObject({ title: "New", importance: "HIGH", estimatedMinutes: 90, categoryId: category.id, version: 2 });
+    const updated = okValue(await updateSeries(ctx("2026-11-10"), seriesId, 1, { title: "New", description: "new text", priority: "HIGH", estimatedMinutes: 90, categoryId: category.id }));
+    expect(updated).toMatchObject({ title: "New", priority: "HIGH", estimatedMinutes: 90, categoryId: category.id, version: 2 });
 
     const rows = await instancesOf(seriesId);
     expect(rows.map((r) => [r.title, r.status])).toEqual([["Old", "COMPLETED"], ["New", "TODO"], ["New", "TODO"]]); // history kept
-    expect(rows.filter((r) => r.status !== "COMPLETED").every((r) => r.description === "new text" && r.importance === "HIGH" && r.estimatedMinutes === 90 && r.categoryId === category.id)).toBe(true);
-    expect(rows[0]).toMatchObject({ description: "old text", importance: "LOW", estimatedMinutes: 30, categoryId: null });
+    expect(rows.filter((r) => r.status !== "COMPLETED").every((r) => r.description === "new text" && r.priority === "HIGH" && r.estimatedMinutes === 90 && r.categoryId === category.id)).toBe(true);
+    expect(rows[0]).toMatchObject({ description: "old text", priority: "LOW", estimatedMinutes: 30, categoryId: null });
 
     const d = (await complete(userId, c.id, "2026-11-12")).successor!;
-    expect(await taskRow(d.id)).toMatchObject({ title: "New", importance: "HIGH", categoryId: category.id });
+    expect(await taskRow(d.id)).toMatchObject({ title: "New", priority: "HIGH", categoryId: category.id });
   });
 
   it("can clear the description, duration and category", async () => {
@@ -419,7 +419,7 @@ describe("editing the whole series (this and future tasks)", () => {
 
   it("rejects unknown fields, bad values and a stale version", async () => {
     const { seriesId } = await makeRecurring(userId, { type: "WEEKLY" });
-    for (const bad of [{ userId: "someone-else" }, { version: 99 }, { state: "STOPPED" }, { title: "" }, { importance: "URGENT" }, { estimatedMinutes: -5 }, { categoryId: "nope" }]) {
+    for (const bad of [{ userId: "someone-else" }, { version: 99 }, { state: "STOPPED" }, { title: "" }, { priority: "URGENT" }, { estimatedMinutes: -5 }, { categoryId: "nope" }]) {
       expect(await updateSeries(ctx("2026-11-02"), seriesId, 1, bad as never)).toMatchObject({ ok: false, error: { code: "VALIDATION" } });
     }
     okValue(await updateSeries(ctx("2026-11-02"), seriesId, 1, { title: "Fresh" }));

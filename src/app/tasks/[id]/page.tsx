@@ -8,7 +8,7 @@ import { AppHeader } from "@/components/app-header";
 import { CategoryChip } from "@/components/category-chip";
 import { RepeatBadge } from "@/components/repeat-badge";
 import { SeriesPanel } from "@/components/series-panel";
-import { ImportanceBadge, StatusBadge, TimingBadges } from "@/components/task-badges";
+import { PriorityBadge, StatusBadge, TimingBadges } from "@/components/task-badges";
 import { TaskEditor } from "@/components/task-editor";
 import { TaskRemoval } from "@/components/task-removal";
 import { formatInstant, formatLocalDate, formatLocalDateTime, nowInTimeZone } from "@/lib/local-time";
@@ -72,7 +72,7 @@ async function TaskDetails({ params, searchParams }: Pick<PageProps<"/tasks/[id]
         <h1 className="mt-3 text-xl font-semibold break-words">{task.title}</h1>
         <div className="mt-2 flex flex-wrap gap-1.5">
           <StatusBadge status={task.status} />
-          <ImportanceBadge importance={task.importance} />
+          <PriorityBadge priority={task.priority} />
           <TimingBadges task={task} now={now} />
           {task.repeat && <RepeatBadge state={task.repeat.state} />}
           {task.category && <CategoryChip category={task.category} />}

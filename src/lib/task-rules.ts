@@ -1,11 +1,11 @@
 // Task Secretary business rules. Pure functions with no database access, so
 // the same rules run on the server and in the browser (for live form warnings).
 
-import type { Importance, TaskStatus } from "@/generated/prisma/enums";
+import type { Priority, TaskStatus } from "@/generated/prisma/enums";
 import type { LocalDate, LocalNow, LocalTime } from "@/lib/local-time";
 
 export const TASK_STATUSES = ["TODO", "IN_PROGRESS", "POSTPONED", "COMPLETED"] as const satisfies readonly TaskStatus[];
-export const IMPORTANCE_LEVELS = ["HIGH", "NORMAL", "LOW"] as const satisfies readonly Importance[];
+export const PRIORITY_LEVELS = ["HIGH", "MEDIUM", "LOW"] as const satisfies readonly Priority[];
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   TODO: "To do",
@@ -14,9 +14,9 @@ export const STATUS_LABELS: Record<TaskStatus, string> = {
   COMPLETED: "Completed",
 };
 
-export const IMPORTANCE_LABELS: Record<Importance, string> = {
+export const PRIORITY_LABELS: Record<Priority, string> = {
   HIGH: "High",
-  NORMAL: "Normal",
+  MEDIUM: "Medium",
   LOW: "Low",
 };
 

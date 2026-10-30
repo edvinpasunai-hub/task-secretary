@@ -38,7 +38,7 @@ const okValue = <T>(result: { ok: boolean; value?: T; error?: unknown }): T => {
 };
 
 const fields = (o: Partial<NewTaskFields> = {}): NewTaskFields => ({
-  title: "Report", description: null, importance: "NORMAL", categoryId: null, estimatedMinutes: null,
+  title: "Report", description: null, priority: "MEDIUM", categoryId: null, estimatedMinutes: null,
   plannedDate: "2026-11-02", plannedTime: null, deadlineDate: null, deadlineTime: null, ...o,
 });
 
@@ -62,13 +62,13 @@ describe("creating a repeating task in one step", () => {
     const result = okValue(
       await createRecurringTask(
         ctx(),
-        fields({ title: "Weekly report", description: "Write it", importance: "HIGH", estimatedMinutes: 60, categoryId: category.id, plannedTime: "09:00", deadlineDate: "2026-11-05", deadlineTime: "17:00" }),
+        fields({ title: "Weekly report", description: "Write it", priority: "HIGH", estimatedMinutes: 60, categoryId: category.id, plannedTime: "09:00", deadlineDate: "2026-11-05", deadlineTime: "17:00" }),
         { type: "WEEKLY", endDate: "2027-01-31" },
       ),
     );
     expect(await counts()).toEqual({ tasks: 1, series: 1 });
     const task = await taskRow(result.taskId);
-    expect(task).toMatchObject({ userId, seriesId: result.seriesId, occurrenceKey: "2026-11-02T09:00", title: "Weekly report", status: "TODO", importance: "HIGH", estimatedMinutes: 60, categoryId: category.id, rescheduleCount: 0, predecessorId: null });
+    expect(task).toMatchObject({ userId, seriesId: result.seriesId, occurrenceKey: "2026-11-02T09:00", title: "Weekly report", status: "TODO", priority: "HIGH", estimatedMinutes: 60, categoryId: category.id, rescheduleCount: 0, predecessorId: null });
     expect(dates(task)).toEqual({ planned: ["2026-11-02", "09:00"], deadline: ["2026-11-05", "17:00"], original: "2026-11-05" });
     expect(await view(result.seriesId)).toMatchObject({ type: "WEEKLY", weekdays: [1], anchorDate: "2026-11-02", plannedTime: "09:00", deadlineOffsetDays: 3, deadlineTime: "17:00", endDate: "2027-01-31", state: "ACTIVE", version: 1, title: "Weekly report", categoryId: category.id });
   });

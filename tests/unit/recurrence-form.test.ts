@@ -126,7 +126,7 @@ describe("issueFieldErrors and recurrenceMessage", () => {
 
 describe("buildSeriesPatch: only what the form changed", () => {
   const loaded: TaskAsLoaded = {
-    title: "Report", description: "text", importance: "NORMAL", estimatedMinutes: 30, categoryId: "cat1",
+    title: "Report", description: "text", priority: "MEDIUM", estimatedMinutes: 30, categoryId: "cat1",
     plannedDate: "2026-11-09", plannedTime: "09:00", deadlineDate: "2026-11-12", deadlineTime: "17:00",
   };
   const form: FormFields = { ...loaded, plannedDate: "2026-11-09" };
@@ -141,10 +141,10 @@ describe("buildSeriesPatch: only what the form changed", () => {
   it("each template field is included only when it differs", () => {
     expect(patch({ title: "New" })).toEqual({ title: "New" });
     expect(patch({ description: null })).toEqual({ description: null });
-    expect(patch({ importance: "HIGH" })).toEqual({ importance: "HIGH" });
+    expect(patch({ priority: "HIGH" })).toEqual({ priority: "HIGH" });
     expect(patch({ estimatedMinutes: null })).toEqual({ estimatedMinutes: null });
     expect(patch({ categoryId: null })).toEqual({ categoryId: null });
-    expect(patch({ title: "New", importance: "LOW" })).toEqual({ title: "New", importance: "LOW" });
+    expect(patch({ title: "New", priority: "LOW" })).toEqual({ title: "New", priority: "LOW" });
   });
   it("the time of day can be added, changed and removed", () => {
     expect(patch({ plannedTime: "10:30" })).toEqual({ plannedTime: "10:30" });

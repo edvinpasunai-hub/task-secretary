@@ -9,20 +9,20 @@ function form(fields: Record<string, string | File>) {
   for (const [key, value] of Object.entries(fields)) data.set(key, value);
   return data;
 }
-const ok = { title: "Write report", importance: "NORMAL" };
+const ok = { title: "Write report", priority: "MEDIUM" };
 
 describe("parseTaskForm", () => {
-  it("a minimal task: just a title and importance; everything else is empty", () => {
+  it("a minimal task: just a title and priority; everything else is empty", () => {
     const result = parseTaskForm(form(ok));
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data).toEqual({ title: "Write report", description: null, categoryId: null, importance: "NORMAL", plannedDate: null, plannedTime: null, deadlineDate: null, deadlineTime: null, estimatedMinutes: null });
+      expect(result.data).toEqual({ title: "Write report", description: null, categoryId: null, priority: "MEDIUM", plannedDate: null, plannedTime: null, deadlineDate: null, deadlineTime: null, estimatedMinutes: null });
     }
   });
 
   it("a full task keeps every field, and the estimate is hours and minutes in minutes", () => {
-    const result = parseTaskForm(form({ ...ok, title: "  Trim me  ", description: " text ", importance: "HIGH", plannedDate: "2026-11-12", plannedTime: "09:30", deadlineDate: "2026-11-10", deadlineTime: "17:00", durationHours: "1", durationMinutes: "30" }));
-    expect(result.success && result.data).toMatchObject({ title: "Trim me", description: "text", importance: "HIGH", plannedDate: "2026-11-12", plannedTime: "09:30", deadlineDate: "2026-11-10", deadlineTime: "17:00", estimatedMinutes: 90 });
+    const result = parseTaskForm(form({ ...ok, title: "  Trim me  ", description: " text ", priority: "HIGH", plannedDate: "2026-11-12", plannedTime: "09:30", deadlineDate: "2026-11-10", deadlineTime: "17:00", durationHours: "1", durationMinutes: "30" }));
+    expect(result.success && result.data).toMatchObject({ title: "Trim me", description: "text", priority: "HIGH", plannedDate: "2026-11-12", plannedTime: "09:30", deadlineDate: "2026-11-10", deadlineTime: "17:00", estimatedMinutes: 90 });
   });
 
   it("an empty or blank title is refused, and what was typed is kept", () => {
@@ -42,11 +42,11 @@ describe("parseTaskForm", () => {
     expect(parseTaskForm(form({ ...ok, description: "x".repeat(5001) })).success).toBe(false);
   });
 
-  it("tampered importance values are refused", () => {
-    for (const importance of ["URGENT", "high", "", "HIGH; DROP TABLE", "0"]) {
-      const result = parseTaskForm(form({ ...ok, importance }));
-      expect(result.success, importance).toBe(false);
-      if (!result.success) expect(result.errors.importance).toBeTruthy();
+  it("tampered priority values are refused", () => {
+    for (const priority of ["URGENT", "high", "", "HIGH; DROP TABLE", "0"]) {
+      const result = parseTaskForm(form({ ...ok, priority }));
+      expect(result.success, priority).toBe(false);
+      if (!result.success) expect(result.errors.priority).toBeTruthy();
     }
   });
 
@@ -89,7 +89,7 @@ describe("parseTaskForm", () => {
   it("ignores fields it does not know: an injected userId, status or id never becomes part of the task", () => {
     const result = parseTaskForm(form({ ...ok, userId: "someone-else", id: "x", status: "COMPLETED", completedAt: "2020-01-01" }));
     expect(result.success).toBe(true);
-    if (result.success) expect(Object.keys(result.data).sort()).toEqual(["categoryId", "deadlineDate", "deadlineTime", "description", "estimatedMinutes", "importance", "plannedDate", "plannedTime", "title"]);
+    if (result.success) expect(Object.keys(result.data).sort()).toEqual(["categoryId", "deadlineDate", "deadlineTime", "description", "estimatedMinutes", "plannedDate", "plannedTime", "priority", "title"]);
   });
 
   it("a file sent where text is expected is treated as empty", () => {

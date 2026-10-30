@@ -2,13 +2,13 @@ import { z } from "zod";
 
 import { categoryIdSchema } from "@/lib/category-validation";
 import { isValidLocalDate, isValidLocalTime } from "@/lib/local-time";
-import { IMPORTANCE_LEVELS, MAX_ESTIMATED_MINUTES, TASK_STATUSES } from "@/lib/task-rules";
+import { PRIORITY_LEVELS, MAX_ESTIMATED_MINUTES, TASK_STATUSES } from "@/lib/task-rules";
 
 export const TASK_FORM_FIELDS = [
   "title",
   "description",
   "categoryId",
-  "importance",
+  "priority",
   "plannedDate",
   "plannedTime",
   "deadlineDate",
@@ -46,7 +46,7 @@ const taskFormSchema = z
     // Empty means "no category". Whether the category belongs to the user is
     // checked against the database by the server action.
     categoryId: optional((value) => categoryIdSchema.safeParse(value).success, "Please choose one of your categories."),
-    importance: z.enum(IMPORTANCE_LEVELS, { error: "Please choose High, Normal or Low." }),
+    priority: z.enum(PRIORITY_LEVELS, { error: "Please choose High, Medium or Low." }),
     plannedDate: optional(isValidLocalDate, "Please enter a valid planned date."),
     plannedTime: optional(isValidLocalTime, "Please enter a valid time, for example 14:30."),
     deadlineDate: optional(isValidLocalDate, "Please enter a valid deadline date."),

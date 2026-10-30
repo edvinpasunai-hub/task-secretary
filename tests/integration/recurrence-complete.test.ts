@@ -22,7 +22,7 @@ describe("converting an ordinary task into a recurring one", () => {
   it("keeps the same task (id, status, details, history) and creates the series", async () => {
     const category = await createCategory(userId);
     const task = await createTask(userId, {
-      title: "Weekly report", description: "Write it", status: "IN_PROGRESS", importance: "HIGH", estimatedMinutes: 90, categoryId: category.id,
+      title: "Weekly report", description: "Write it", status: "IN_PROGRESS", priority: "HIGH", estimatedMinutes: 90, categoryId: category.id,
       plannedDate: "2026-11-02", deadlineDate: "2026-11-05", deadlineTime: "17:00", rescheduleCount: 2,
     });
     const result = await convertToRecurring(ctxFor(userId), task.id, { type: "WEEKLY" });
@@ -34,14 +34,14 @@ describe("converting an ordinary task into a recurring one", () => {
     expect(after.status).toBe("IN_PROGRESS");
     expect(after.rescheduleCount).toBe(2);
     expect(dates(after)).toEqual(dates(task));
-    expect([after.title, after.description, after.importance, after.estimatedMinutes, after.categoryId]).toEqual(["Weekly report", "Write it", "HIGH", 90, category.id]);
+    expect([after.title, after.description, after.priority, after.estimatedMinutes, after.categoryId]).toEqual(["Weekly report", "Write it", "HIGH", 90, category.id]);
     expect(after.seriesId).toBe(result.value.seriesId);
     expect(after.occurrenceKey).toBe("2026-11-02");
     expect(await prisma.task.count({ where: { userId } })).toBe(1); // no duplicate task
     expect(result.value.successor).toBeNull(); // unfinished: its successor comes when it is completed
 
     const series = (await getSeries(ctxFor(userId), result.value.seriesId))!;
-    expect(series).toMatchObject({ type: "WEEKLY", weekdays: [1], anchorDate: "2026-11-02", plannedTime: null, title: "Weekly report", description: "Write it", importance: "HIGH", estimatedMinutes: 90, categoryId: category.id, deadlineOffsetDays: 3, deadlineTime: "17:00", endDate: null, state: "ACTIVE", pausedUntil: null, version: 1 });
+    expect(series).toMatchObject({ type: "WEEKLY", weekdays: [1], anchorDate: "2026-11-02", plannedTime: null, title: "Weekly report", description: "Write it", priority: "HIGH", estimatedMinutes: 90, categoryId: category.id, deadlineOffsetDays: 3, deadlineTime: "17:00", endDate: null, state: "ACTIVE", pausedUntil: null, version: 1 });
   });
 
   it("converting an already completed task also creates the next instance", async () => {
@@ -95,11 +95,11 @@ describe("completing a recurring task creates exactly one successor on the fixed
   it("copies the template, resets instance state, and keeps the deadline offset", async () => {
     const category = await createCategory(userId);
     const { task, seriesId } = await recurring({
-      type: "WEEKLY", title: "Report", description: "Details", importance: "HIGH", estimatedMinutes: 45, categoryId: category.id,
+      type: "WEEKLY", title: "Report", description: "Details", priority: "HIGH", estimatedMinutes: 45, categoryId: category.id,
       plannedDate: "2026-11-02", plannedTime: "09:00", deadlineDate: "2026-11-05", deadlineTime: "17:00",
     });
     // changes made to ONE instance ("only this task") must not be copied forward
-    await prisma.task.update({ where: { id: task.id }, data: { title: "Edited just here", description: "Only here", rescheduleCount: 4, importance: "LOW" } });
+    await prisma.task.update({ where: { id: task.id }, data: { title: "Edited just here", description: "Only here", rescheduleCount: 4, priority: "LOW" } });
 
     const outcome = await complete(task.id, "2026-11-05", "10:00"); // completed on Thursday
     expect(outcome).toMatchObject({ alreadyCompleted: false, successor: { occurrenceKey: "2026-11-09T09:00" } });
@@ -108,7 +108,7 @@ describe("completing a recurring task creates exactly one successor on the fixed
     expect(first).toMatchObject({ id: task.id, status: "COMPLETED", title: "Edited just here" });
     expect(first.completedAt).not.toBeNull();
     expect(second).toMatchObject({
-      title: "Report", description: "Details", importance: "HIGH", estimatedMinutes: 45, categoryId: category.id,
+      title: "Report", description: "Details", priority: "HIGH", estimatedMinutes: 45, categoryId: category.id,
       status: "TODO", completedAt: null, rescheduleCount: 0, predecessorId: task.id, userId, seriesId,
     });
     expect(dates(second)).toEqual({ planned: ["2026-11-09", "09:00"], deadline: ["2026-11-12", "17:00"], original: "2026-11-12" });
