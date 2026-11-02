@@ -5,6 +5,8 @@ import { todayRange } from "@/lib/dashboard/day";
 import { greetingLine } from "@/lib/dashboard/greeting";
 import { partitionByDue, type DueSection } from "@/lib/dashboard/sections";
 import type { LocalDate, LocalNow } from "@/lib/local-time";
+import { toFocusItems, type FocusItem } from "@/lib/ranking/focus";
+import { loadRankedTasks } from "@/lib/ranking/queries";
 import { requireUser } from "@/lib/session";
 import { ACTIVE_TASK } from "@/lib/task-state";
 import { runListMaintenance, toTaskView, withCategory, type TaskView } from "@/lib/tasks";
@@ -18,6 +20,8 @@ export type DashboardData = {
   now: LocalNow;
   // The time-of-day greeting.
   greeting: string;
+  // Secretary's Focus: the top-ranked tasks (at most 5), from the Stage 6.2 ranking engine. No scores.
+  focus: FocusItem[];
   // The Daily Briefing numbers.
   briefing: { dueToday: number; overdue: number; completedToday: number };
   // Full number of unfinished tasks in every section (not limited to SECTION_LIMIT).
@@ -39,9 +43,11 @@ type DashboardContext = { userId: string; name: string | null; timeZone: string;
 export async function loadDashboard(ctx: DashboardContext): Promise<DashboardData> {
   const { local, start, end } = todayRange(ctx.now ?? new Date(), ctx.timeZone);
 
-  const [open, completedToday] = await Promise.all([
+  const [open, completedToday, ranked] = await Promise.all([
     prisma.task.findMany({ where: { userId: ctx.userId, ...ACTIVE_TASK, status: { not: "COMPLETED" } }, include: withCategory }),
     prisma.task.count({ where: { userId: ctx.userId, deletedAt: null, status: "COMPLETED", completedAt: { gte: start, lt: end } } }),
+    // The same moment and zone as the rest of the dashboard, so Focus and the sections always agree about "today".
+    loadRankedTasks({ userId: ctx.userId, timeZone: ctx.timeZone, now: ctx.now }),
   ]);
 
   const parts = partitionByDue(open.map(toTaskView), local);
@@ -49,6 +55,7 @@ export async function loadDashboard(ctx: DashboardContext): Promise<DashboardDat
     today: local.date,
     now: local,
     greeting: greetingLine(local.time, ctx.name),
+    focus: toFocusItems(ranked, local.date),
     briefing: { dueToday: parts.today.length, overdue: parts.overdue.length, completedToday },
     counts: { overdue: parts.overdue.length, today: parts.today.length, upcoming: parts.upcoming.length, later: parts.later.length, none: parts.none.length },
     sections: {
