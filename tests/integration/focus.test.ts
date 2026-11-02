@@ -214,7 +214,7 @@ describe("privacy and what is stored", () => {
   it("the Focus rows contain no score, points, breakdown, description or owner", async () => {
     await createTask(me, { title: "private title", description: "private notes", priority: "HIGH", deadlineDate: "2026-11-09" });
     const items = await focus();
-    expect(Object.keys(items[0]).sort()).toEqual(["dueLabel", "id", "priority", "priorityLabel", "rank", "reason", "title"]);
+    expect(Object.keys(items[0]).sort()).toEqual(["advice", "dueLabel", "id", "priority", "priorityLabel", "rank", "reason", "title"]);
     const json = JSON.stringify(items);
     expect(json).not.toMatch(/score|points|breakdown|private notes|userId/i);
   });

@@ -87,9 +87,42 @@ export type FocusItem = {
   priorityLabel: string; // "High" | "Medium" | "Low"
   dueLabel: string;
   reason: string;
+  // Stage 6.4: a short, optional note about repeated postponement (null for 0-2 postponements).
+  advice: string | null;
 };
 
-type FocusTask = RankableTask & { title: string };
+// rescheduleCount is the existing persisted postponement counter (a TaskView has it); optional here so plain ranking inputs work.
+type FocusTask = RankableTask & { title: string; rescheduleCount?: number };
+
+// ---------------------------------------------------------------------------------------------------------
+// Stage 6.4: Secretary's Advice. Fixed rules on data that already exists; nothing is stored and nothing is changed.
+// ---------------------------------------------------------------------------------------------------------
+
+export const POSTPONE_GENTLE_FROM = 3;
+export const POSTPONE_STRONG_FROM = 5;
+export const OVERLOAD_FROM = 8;
+
+// Advice for a task that has been postponed several times, using the real counter. 0-2: none; 3-4: a gentle reminder;
+// 5 or more: suggest smaller steps or a new deadline.
+export function postponementAdvice(count: number): string | null {
+  if (!Number.isInteger(count) || count < POSTPONE_GENTLE_FROM) return null;
+  if (count < POSTPONE_STRONG_FROM) return `You've postponed this task ${count} times. Consider setting aside time for it.`;
+  return `Postponed ${count} times. Consider breaking this task into smaller steps or revisiting its deadline.`;
+}
+
+export type OverloadAdvice = { count: number; title: string; message: string };
+
+// How many eligible tasks are overdue or due today. Works on the FULL ranking (not only the top five); each task has exactly one
+// urgency level, so none is counted twice, and the level is the ranking's own (same time zone and "overdue" rule).
+export function overloadCount(ranked: ReadonlyArray<Pick<RankedTask, "breakdown">>): number {
+  return ranked.filter(({ breakdown }) => breakdown.urgencyLevel === "OVERDUE" || breakdown.urgencyLevel === "TODAY").length;
+}
+
+// One general warning from 8 tasks upward, otherwise none.
+export function overloadAdvice(count: number): OverloadAdvice | null {
+  if (count < OVERLOAD_FROM) return null;
+  return { count, title: "A busy day ahead", message: `You have ${count} tasks overdue or due today. Consider choosing a few to focus on first.` };
+}
 
 // The first `limit` ranked tasks as display rows. The order is exactly the ranking's; fewer rows when fewer tasks are
 // eligible; no rows at all when none is.
@@ -107,5 +140,6 @@ export function toFocusItems(ranked: ReadonlyArray<RankedTask<FocusTask>>, today
       ageDays: breakdown.ageDays,
       daysUntilDue: task.deadlineDate ? diffDays(task.deadlineDate, today) : null,
     }),
+    advice: postponementAdvice(task.rescheduleCount ?? 0),
   }));
 }

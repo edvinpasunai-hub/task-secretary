@@ -5,7 +5,7 @@ import { todayRange } from "@/lib/dashboard/day";
 import { greetingLine } from "@/lib/dashboard/greeting";
 import { partitionByDue, type DueSection } from "@/lib/dashboard/sections";
 import type { LocalDate, LocalNow } from "@/lib/local-time";
-import { toFocusItems, type FocusItem } from "@/lib/ranking/focus";
+import { overloadAdvice, overloadCount, toFocusItems, type FocusItem, type OverloadAdvice } from "@/lib/ranking/focus";
 import { loadRankedTasks } from "@/lib/ranking/queries";
 import { requireUser } from "@/lib/session";
 import { ACTIVE_TASK } from "@/lib/task-state";
@@ -22,6 +22,8 @@ export type DashboardData = {
   greeting: string;
   // Secretary's Focus: the top-ranked tasks (at most 5), from the Stage 6.2 ranking engine. No scores.
   focus: FocusItem[];
+  // Stage 6.4: the one general overload warning (8 or more tasks overdue or due today, counted over ALL eligible tasks); null otherwise.
+  overload: OverloadAdvice | null;
   // The Daily Briefing numbers.
   briefing: { dueToday: number; overdue: number; completedToday: number };
   // Full number of unfinished tasks in every section (not limited to SECTION_LIMIT).
@@ -56,6 +58,7 @@ export async function loadDashboard(ctx: DashboardContext): Promise<DashboardDat
     now: local,
     greeting: greetingLine(local.time, ctx.name),
     focus: toFocusItems(ranked, local.date),
+    overload: overloadAdvice(overloadCount(ranked)),
     briefing: { dueToday: parts.today.length, overdue: parts.overdue.length, completedToday },
     counts: { overdue: parts.overdue.length, today: parts.today.length, upcoming: parts.upcoming.length, later: parts.later.length, none: parts.none.length },
     sections: {

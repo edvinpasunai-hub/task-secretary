@@ -162,7 +162,7 @@ describe("the Focus rows (from the real ranking)", () => {
 
   it("exposes no score, points, breakdown or other task fields: only what is shown", () => {
     const [item] = toFocusItems(rankTasks(all, ctx), TODAY);
-    expect(Object.keys(item).sort()).toEqual(["dueLabel", "id", "priority", "priorityLabel", "rank", "reason", "title"]);
+    expect(Object.keys(item).sort()).toEqual(["advice", "dueLabel", "id", "priority", "priorityLabel", "rank", "reason", "title"]);
     expect(JSON.stringify(item)).not.toMatch(/score|points|breakdown|createdAt|description/i);
   });
 

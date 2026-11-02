@@ -1,11 +1,11 @@
-import { Check, Plus, Target } from "lucide-react";
+import { CalendarClock, Check, Lightbulb, Plus, Target } from "lucide-react";
 import Link from "next/link";
 
 import { setTaskStatus } from "@/app/tasks/actions";
 import { SubmitButton } from "@/components/submit-button";
 import { PriorityBadge } from "@/components/task-badges";
 import { buttonVariants } from "@/components/ui/button";
-import type { FocusItem } from "@/lib/ranking/focus";
+import type { FocusItem, OverloadAdvice } from "@/lib/ranking/focus";
 import { returnQuery } from "@/lib/return-path";
 
 const FROM_DASHBOARD = returnQuery({ from: "dashboard", due: null, category: null });
@@ -15,7 +15,7 @@ const FROM_DASHBOARD = returnQuery({ from: "dashboard", due: null, category: nul
 // rows reuse the existing pieces: the task link keeps the "came from the dashboard" return (a short validated value, no
 // task content in the URL), and the check button is the existing Complete action (setTaskStatus), which re-renders the
 // dashboard, so a completed task leaves the list and the next one takes its place.
-export function SecretaryFocus({ items }: { items: FocusItem[] }) {
+export function SecretaryFocus({ items, overload }: { items: FocusItem[]; overload: OverloadAdvice | null }) {
   return (
     <section aria-labelledby="focus-heading" className="mt-5" data-focus>
       <h2 id="focus-heading" className="flex items-center gap-2 text-lg font-semibold">
@@ -56,6 +56,15 @@ export function SecretaryFocus({ items }: { items: FocusItem[] }) {
                 <p className="mt-1 text-sm text-muted-foreground" data-focus-reason>
                   {item.reason}
                 </p>
+                {item.advice && (
+                  <p className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground" data-focus-advice>
+                    <Lightbulb className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                    <span>
+                      <span className="sr-only">Advice: </span>
+                      {item.advice}
+                    </span>
+                  </p>
+                )}
               </div>
 
               <form action={setTaskStatus} className="shrink-0">
@@ -68,6 +77,16 @@ export function SecretaryFocus({ items }: { items: FocusItem[] }) {
             </li>
           ))}
         </ol>
+      )}
+
+      {overload && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-dashed bg-muted/40 p-3 text-sm" data-focus-overload role="note" aria-label={overload.title}>
+          <CalendarClock className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <div>
+            <p className="font-medium">{overload.title}</p>
+            <p className="text-muted-foreground">{overload.message}</p>
+          </div>
+        </div>
       )}
     </section>
   );

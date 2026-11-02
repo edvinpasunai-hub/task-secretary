@@ -129,7 +129,7 @@ async function Dashboard() {
         </div>
 
         {/* Secretary's Focus: the top-ranked tasks, above the Daily briefing and every other section. */}
-        <SecretaryFocus items={data.focus} />
+        <SecretaryFocus items={data.focus} overload={data.overload} />
 
         <section aria-labelledby="briefing-heading" className="mt-5 rounded-xl border bg-card p-4 shadow-xs" data-briefing>
           <h2 id="briefing-heading" className="flex items-center gap-2 text-sm font-medium">
